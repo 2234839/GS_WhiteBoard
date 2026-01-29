@@ -3,6 +3,8 @@
   import type { ToolConfig } from '@/types';
   import { ToolType } from '@/types';
   import { useLogControl, LOG_CATEGORIES } from '@/composables/useLogControl';
+  import ColorPicker from './ColorPicker.vue';
+  import SizePicker from './SizePicker.vue';
 
   /**
    * Emits 定义
@@ -109,6 +111,33 @@
       >
         橡皮擦
       </button>
+
+      <!-- 颜色选择器（仅画笔模式显示） -->
+      <div v-if="effectiveToolType === ToolType.PEN" class="toolbar-divider"></div>
+      <ColorPicker
+        v-if="effectiveToolType === ToolType.PEN"
+        v-model="toolConfig.brush.color"
+      />
+
+      <!-- 粗细选择器 -->
+      <div class="toolbar-divider"></div>
+      <SizePicker
+        v-if="effectiveToolType === ToolType.PEN"
+        v-model="toolConfig.brush.baseLineWidth"
+        :min="1"
+        :max="50"
+        :presets="[2, 5, 10, 20, 30]"
+      />
+      <SizePicker
+        v-if="effectiveToolType === ToolType.ERASER"
+        v-model="toolConfig.eraser.size"
+        :min="5"
+        :max="100"
+        :presets="[10, 20, 30, 50, 80]"
+        unit="px"
+      />
+
+      <div class="toolbar-divider"></div>
       <button
         :class="['tool-btn', { active: toolConfig.touchEnabled }]"
         @click="setTouchEnabled(!toolConfig.touchEnabled)"
@@ -174,6 +203,15 @@
     background-color: white;
     border-radius: 8px 8px 0 0;
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    align-items: center;
+    flex-wrap: wrap;
+  }
+
+  .toolbar-divider {
+    width: 1px;
+    height: 24px;
+    background-color: #e8e8e8;
+    margin: 0 4px;
   }
 
   .tool-btn {
