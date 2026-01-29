@@ -3,6 +3,7 @@
   import { Leafer, Pen, Group, Rect } from 'leafer-ui';
   import type { ToolConfig, ToolType } from '../types';
   import { createTestData } from '../utils/testData';
+  import PerformanceMonitor from './PerformanceMonitor.vue';
 
   /** 当前工具配置 */
   const toolConfig = ref<ToolConfig>({
@@ -43,6 +44,9 @@
   const isUsingPen = ref(false);
   /** 压力变化阈值，超过此值时创建新的路径段 */
   const PRESSURE_THRESHOLD = 0.05;
+
+  /** 性能分析开关 */
+  const performanceMonitorEnabled = ref(false);
 
   /**
    * 获取笔刷大小（基于压感）
@@ -383,6 +387,13 @@
       >
         触摸: {{ toolConfig.touchEnabled ? '开' : '关' }}
       </button>
+      <button
+        :class="['tool-btn', { active: performanceMonitorEnabled }]"
+        @click="performanceMonitorEnabled = !performanceMonitorEnabled"
+        title="切换性能分析"
+      >
+        性能
+      </button>
       <button class="tool-btn" @click="clearCanvas">清空</button>
     </div>
 
@@ -390,6 +401,13 @@
     <div v-if="isUsingPen" class="pen-indicator">
       压感笔模式 - 触摸已禁用
     </div>
+
+    <!-- 性能监控组件 -->
+    <PerformanceMonitor
+      :enabled="performanceMonitorEnabled"
+      :leaferInstance="leaferInstance"
+      :mainGroup="mainGroup"
+    />
   </div>
 </template>
 
