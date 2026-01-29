@@ -1,21 +1,88 @@
+// ==================== 自适应平滑配置 ====================
+
 /**
- * 压感平滑系数（指数移动平均的 alpha 值）
+ * 默认压感平滑系数（指数移动平均的 alpha 值）
  * 范围 0-1，值越小平滑效果越强
- * 参考 OpenTabletDriver 的推荐值：0.1-0.3
+ * 实际使用时会根据输入抖动程度动态调整
  */
-export const PRESSURE_SMOOTHING_ALPHA = 0.2;
+export const DEFAULT_PRESSURE_SMOOTHING_ALPHA = 0.3;
 
 /**
- * 压感变化插值阈值
- * 当两个点之间的压感差异超过此值时，进行插值处理
+ * 默认位置平滑系数
  */
-export const PRESSURE_INTERPOLATION_THRESHOLD = 0.1;
+export const DEFAULT_POSITION_SMOOTHING_ALPHA = 0.3;
 
 /**
- * 插值点之间的最小距离（像素）
- * 避免生成过于密集的插值点
+ * 自适应平滑状态
  */
-export const MIN_INTERPOLATION_DISTANCE = 5;
+export interface AdaptiveSmoothingState {
+  /** 最近N个点的压感值（用于计算方差） */
+  pressureHistory: number[];
+  /** 最大历史记录数量 */
+  maxHistorySize: number;
+  /** 上一次的压感值 */
+  lastPressure: number;
+}
+
+/**
+ * 初始化自适应平滑状态
+ */
+export function initAdaptiveSmoothingState(maxHistorySize: number = 5): AdaptiveSmoothingState {
+  return {
+    pressureHistory: [],
+    maxHistorySize,
+    lastPressure: 0.5,
+  };
+}
+
+/**
+ * 计算自适应压感平滑系数
+ * 根据输入抖动程度（压感方差）动态调整平滑系数
+ *
+ * 策略：
+ * - 抖动越大（方差大），alpha 越小（更平滑）
+ * - 抖动越小（方差小），alpha 越大（保持响应性）
+ *
+ * @param state 平滑状态
+ * @param currentPressure 当前压感值
+ * @returns 自适应平滑系数 alpha（0-1）
+ */
+export function getAdaptivePressureAlpha(state: AdaptiveSmoothingState, currentPressure: number): number {
+  // 更新历史记录
+  state.pressureHistory.push(currentPressure);
+  if (state.pressureHistory.length > state.maxHistorySize) {
+    state.pressureHistory.shift();
+  }
+
+  // 如果历史记录不足，返回默认值
+  if (state.pressureHistory.length < 3) {
+    return DEFAULT_PRESSURE_SMOOTHING_ALPHA;
+  }
+
+  // 计算压感方差（衡量抖动程度）
+  const mean = state.pressureHistory.reduce((sum, p) => sum + p, 0) / state.pressureHistory.length;
+  const variance = state.pressureHistory.reduce((sum, p) => sum + (p - mean) ** 2, 0) / state.pressureHistory.length;
+
+  /**
+   * 根据方差动态调整 alpha
+   * 方差 < 0.001：几乎无抖动，alpha = 0.4（高响应性）
+   * 方差 0.001-0.005：轻微抖动，alpha = 0.3
+   * 方差 0.005-0.01：中等抖动，alpha = 0.2
+   * 方差 > 0.01：严重抖动，alpha = 0.1（强平滑）
+   */
+  let alpha: number;
+  if (variance < 0.001) {
+    alpha = 0.4;
+  } else if (variance < 0.005) {
+    alpha = 0.3;
+  } else if (variance < 0.01) {
+    alpha = 0.2;
+  } else {
+    alpha = 0.1;
+  }
+
+  return alpha;
+}
 
 // ==================== 绘制消抖优化配置 ====================
 
@@ -32,14 +99,6 @@ export const MIN_SAMPLING_DISTANCE = 3;
  * 用于限制采样频率，减少计算量
  */
 export const MIN_SAMPLING_INTERVAL = 8; // 约120fps
-
-/**
- * 位置平滑系数（指数移动平均的 alpha 值）
- * 用于平滑位置的抖动，范围 0-1
- * 值越小平滑效果越强，但响应越慢
- * 0.3 是较好的平衡点
- */
-export const POSITION_SMOOTHING_ALPHA = 0.3;
 
 /**
  * 对压感值进行指数移动平均平滑处理
@@ -99,8 +158,24 @@ export interface InterpolationPoint {
 }
 
 /**
- * 当压感变化不连续时，生成插值点以实现平滑过渡
- * 这个函数解决了压感突变导致的线条粗细跳变问题
+ * 自适应压感插值配置
+ */
+export interface InterpolationConfig {
+  /** 画笔基础粗细 */
+  baseLineWidth: number;
+  /** 压感是否启用 */
+  pressureEnabled: boolean;
+}
+
+/**
+ * 自适应压感插值函数
+ * 根据实际数据动态决定是否插值以及插值点数量
+ *
+ * 自适应策略：
+ * 1. 计算压感变化梯度（压感变化/距离）
+ * 2. 计算实际线条粗细变化幅度（像素）
+ * 3. 根据梯度、幅度、距离综合判断是否需要插值
+ * 4. 动态计算插值点数量
  *
  * @param x1 起点X坐标
  * @param y1 起点Y坐标
@@ -108,38 +183,104 @@ export interface InterpolationPoint {
  * @param x2 终点X坐标
  * @param y2 终点Y坐标
  * @param pressure2 终点压感值
+ * @param config 插值配置
  * @returns 插值点数组（不包括起点和终点）
  */
-export function interpolatePressureTransition(
+export function adaptiveInterpolatePressureTransition(
   x1: number,
   y1: number,
   pressure1: number,
   x2: number,
   y2: number,
-  pressure2: number
+  pressure2: number,
+  config: InterpolationConfig
 ): InterpolationPoint[] {
+  const { baseLineWidth, pressureEnabled } = config;
+
+  // 如果压感未启用，不需要插值
+  if (!pressureEnabled) {
+    return [];
+  }
+
   /** 压感差异的绝对值 */
   const pressureDiff = Math.abs(pressure2 - pressure1);
 
-  // 如果压感差异小于阈值，不需要插值
-  if (pressureDiff < PRESSURE_INTERPOLATION_THRESHOLD) {
+  // 如果压感差异很小，不需要插值
+  if (pressureDiff < 0.01) {
     return [];
   }
 
   /** 两点之间的距离 */
   const dist = distance(x1, y1, x2, y2);
 
-  // 如果距离太近，不需要插值
-  if (dist < MIN_INTERPOLATION_DISTANCE) {
+  // 如果距离太近（小于2像素），不需要插值
+  if (dist < 2) {
     return [];
   }
 
   /**
-   * 根据压感差异和距离计算插值点数量
-   * 压感差异越大，插值点越多
-   * 距离越远，可以插入更多的点
+   * 计算实际线条粗细变化（像素）
+   * 公式：baseLineWidth * pressureDiff * 2.5
+   * 2.5 是压感对粗细的影响系数（见 getBrushSize 函数）
    */
-  const numPoints = Math.ceil(Math.max(pressureDiff * 10, dist / MIN_INTERPOLATION_DISTANCE));
+  const actualSizeChange = baseLineWidth * pressureDiff * 2.5;
+
+  /**
+   * 计算压感变化梯度（每像素的压感变化）
+   */
+  const pressureGradient = pressureDiff / dist;
+
+  /**
+   * 自适应判断：是否需要插值
+   * 满足以下任一条件即插值：
+   * 1. 实际粗细变化超过阈值（对任何画笔大小都有意义）
+   * 2. 压感变化梯度超过阈值（每像素压感变化）
+   *
+   * 对于粗笔，降低插值门槛，确保更早触发插值
+   */
+  const sizeChangeThreshold = baseLineWidth > 30 ? 2 : 3;
+  const gradientThreshold = baseLineWidth > 30 ? 0.015 : 0.02;
+  const needsInterpolation = actualSizeChange > sizeChangeThreshold || pressureGradient > gradientThreshold;
+
+  if (!needsInterpolation) {
+    return [];
+  }
+
+  /**
+   * 动态计算插值点数量
+   * 考虑因素：
+   * 1. 压感变化梯度：梯度越大，插值越密集
+   * 2. 实际粗细变化：变化越大，插值越密集
+   * 3. 距离：距离越远，可以插入更多点
+   * 4. 画笔粗细：粗笔需要更密集的插值以掩盖边界
+   *
+   * 基础插值点数：根据梯度计算
+   * 梯度 < 0.02：每 3-5 像素一个插值点
+   * 梯度 0.02-0.05：每 2-3 像素一个插值点
+   * 梯度 0.05-0.1：每 1-2 像素一个插值点
+   * 梯度 > 0.1：每 0.5-1 像素一个插值点
+   *
+   * 粗笔（>30px）额外增加插值密度
+   */
+  const isThickBrush = baseLineWidth > 30;
+  let basePoints: number;
+  if (pressureGradient < 0.02) {
+    basePoints = Math.max(isThickBrush ? 4 : 2, Math.floor(dist / (isThickBrush ? 3 : 5)));
+  } else if (pressureGradient < 0.05) {
+    basePoints = Math.max(isThickBrush ? 5 : 3, Math.floor(dist / (isThickBrush ? 2 : 2.5)));
+  } else if (pressureGradient < 0.1) {
+    basePoints = Math.max(isThickBrush ? 8 : 5, Math.floor(dist / (isThickBrush ? 1 : 1.5)));
+  } else {
+    basePoints = Math.max(isThickBrush ? 12 : 8, Math.floor(dist / (isThickBrush ? 0.5 : 0.8)));
+  }
+
+  /**
+   * 根据实际粗细变化调整插值点数量
+   * 变化越大，插值点越多
+   * 粗笔使用更大的系数
+   */
+  const sizeFactor = Math.min(isThickBrush ? 3 : 2, Math.max(0.5, actualSizeChange / 5));
+  const numPoints = Math.ceil(basePoints * sizeFactor);
 
   /** 插值点数组 */
   const points: InterpolationPoint[] = [];

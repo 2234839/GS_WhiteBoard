@@ -6,11 +6,15 @@
   import { createTestData } from '@/utils/testData';
   import {
     exponentialMovingAverage,
-    PRESSURE_SMOOTHING_ALPHA,
-    interpolatePressureTransition,
+    DEFAULT_PRESSURE_SMOOTHING_ALPHA,
+    DEFAULT_POSITION_SMOOTHING_ALPHA,
+    adaptiveInterpolatePressureTransition,
+    InterpolationConfig,
     shouldAcceptPoint,
     smoothPosition,
-    POSITION_SMOOTHING_ALPHA,
+    initAdaptiveSmoothingState,
+    getAdaptivePressureAlpha,
+    AdaptiveSmoothingState,
   } from '@/utils/pressureSmoothing';
   import PerformanceMonitor from './PerformanceMonitor.vue';
   import Toolbar from './Toolbar.vue';
@@ -55,21 +59,34 @@
     {
       path: Pen;
       isEraser: boolean;
-      lastPressure: number; // 上一次的压力值
-      lastX: number; // 上一次的X坐标
-      lastY: number; // 上一次的Y坐标
-      smoothedPressure: number; // 平滑后的压感值（用于指数移动平均）
-      smoothedX: number; // 平滑后的X坐标
-      smoothedY: number; // 平滑后的Y坐标
-      lastTimestamp: number; // 上一次绘制的时间戳
+      lastPressure: number;
+      lastX: number;
+      lastY: number;
+      smoothedPressure: number;
+      smoothedX: number;
+      smoothedY: number;
+      lastTimestamp: number;
+      adaptiveSmoothingState: AdaptiveSmoothingState;
     }
   >();
   /** 是否正在使用压感笔（用于自动禁用触摸） */
   const isUsingPen = ref(false);
   /** 压感笔临时切换状态（null表示未临时切换） */
   const temporaryToolSwitch = ref<'pen' | 'eraser' | null>(null);
-  /** 压力变化阈值，超过此值时创建新的路径段 */
-  const PRESSURE_THRESHOLD = 0.05;
+
+  /**
+   * 根据画笔粗细动态计算压感变化阈值
+   * 粗笔使用更小的阈值，确保更早触发插值，得到更平滑的过渡
+   */
+  function getPressureThreshold(baseLineWidth: number): number {
+    if (baseLineWidth < 10) {
+      return 0.05; // 细笔：可以使用较大的阈值
+    } else if (baseLineWidth < 30) {
+      return 0.03; // 中等笔：中等阈值
+    } else {
+      return 0.015; // 粗笔：使用很小的阈值，确保平滑过渡
+    }
+  }
 
   /**
    * 获取笔刷大小（基于压感）
@@ -184,6 +201,7 @@
       smoothedX: x,
       smoothedY: y,
       lastTimestamp: Date.now(),
+      adaptiveSmoothingState: initAdaptiveSmoothingState(5),
     });
 
   }
@@ -240,17 +258,14 @@
         drawingState.smoothedY,
         rawX,
         rawY,
-        POSITION_SMOOTHING_ALPHA
+        DEFAULT_POSITION_SMOOTHING_ALPHA
       );
       x = smoothedPos.x;
       y = smoothedPos.y;
 
-      // 压感平滑：使用指数移动平均
-      pressure = exponentialMovingAverage(
-        drawingState.smoothedPressure,
-        rawPressure,
-        PRESSURE_SMOOTHING_ALPHA
-      );
+      // 压感平滑：使用自适应系数
+      const adaptiveAlpha = getAdaptivePressureAlpha(drawingState.adaptiveSmoothingState, rawPressure);
+      pressure = exponentialMovingAverage(drawingState.smoothedPressure, rawPressure, adaptiveAlpha);
 
       // 更新平滑后的值
       drawingState.smoothedX = x;
@@ -259,19 +274,24 @@
       drawingState.lastTimestamp = currentTimestamp;
     }
 
-    // 检查压力是否显著变化
+    // 检查压力是否显著变化（根据画笔粗细动态调整阈值）
+    const pressureThreshold = getPressureThreshold(brush.baseLineWidth);
     const pressureChanged =
-      Math.abs(pressure - drawingState.lastPressure) > PRESSURE_THRESHOLD;
+      Math.abs(pressure - drawingState.lastPressure) > pressureThreshold;
 
     if (pressureChanged && !drawingState.isEraser) {
-      // 压力变化显著，使用插值生成平滑过渡
-      const interpolationPoints = interpolatePressureTransition(
+      // 压力变化显著，使用自适应插值生成平滑过渡
+      const interpolationPoints = adaptiveInterpolatePressureTransition(
         drawingState.lastX,
         drawingState.lastY,
         drawingState.lastPressure,
         x,
         y,
-        pressure
+        pressure,
+        {
+          baseLineWidth: brush.baseLineWidth,
+          pressureEnabled: brush.pressureEnabled,
+        }
       );
 
       if (interpolationPoints.length > 0) {
