@@ -4,4 +4,14 @@
     - 实现功能完毕后由我 review 确定没问题后你再 commit 以及合并到 main 分支
     - 合并时必须使用 `git merge 功能分支 --no-ff --no-edit` 来创建 merge commit，保留分支历史
     - 开始下一个功能开发时记得要 push 功能分支，不要删除功能分支
+- 日志打印规范
+    - 所有日志必须使用日志控制，不得直接使用 console.log
+    - 使用方式：先引入 `import { useLogControl } from '@/composables/useLogControl'`
+    - 调用 `const logEnable = useLogControl()` 获取日志控制对象
+    - 打印日志时使用：`logEnable.xxx && console.log('日志内容')`
+    - 可用的日志开关：
+        - `logEnable.performanceMonitor` - 性能监控日志
+        - `logEnable.drawEvent` - 绘制事件日志
+        - `logEnable.penEvent` - 压感笔日志
+    - 如果需要添加新的日志类别，请先在 useLogControl 中添加对应的配置
 [](./架构文档.md)
