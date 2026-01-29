@@ -1,7 +1,7 @@
 <script setup lang="ts">
   import { ref } from 'vue';
   import type { ToolConfig, ToolType } from '@/types';
-  import { useLogControl } from '@/composables/useLogControl';
+  import { useLogControl, LOG_CATEGORIES } from '@/composables/useLogControl';
 
   /**
    * Emits 定义
@@ -104,29 +104,17 @@
     <!-- 日志控制面板 -->
     <div v-if="logPanelExpanded" class="log-panel">
       <div class="log-panel-title">日志控制</div>
-      <div class="log-panel-item">
+      <div
+        v-for="[key, category] in Object.entries(LOG_CATEGORIES)"
+        :key="key"
+        class="log-panel-item"
+      >
         <input
-          id="log-performance"
+          :id="`log-${key}`"
           type="checkbox"
-          v-model="logEnable.performanceMonitor"
+          v-model="logEnable[key as keyof typeof logEnable]"
         />
-        <label for="log-performance">性能监控日志</label>
-      </div>
-      <div class="log-panel-item">
-        <input
-          id="log-draw"
-          type="checkbox"
-          v-model="logEnable.drawEvent"
-        />
-        <label for="log-draw">绘制事件日志</label>
-      </div>
-      <div class="log-panel-item">
-        <input
-          id="log-pen"
-          type="checkbox"
-          v-model="logEnable.penEvent"
-        />
-        <label for="log-pen">压感笔日志</label>
+        <label :for="`log-${key}`">{{ category.label }}</label>
       </div>
     </div>
   </div>
