@@ -36,5 +36,5 @@ export function useLogControl() {
   }, localStorage, { mergeDefaults: true });
 
   /** 返回 reactive 对象，方便使用 */
-  return reactive(config);
+  return reactive(config.value);
 }
