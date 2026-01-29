@@ -35,5 +35,5 @@ export function useLogControl() {
   }, localStorage, { mergeDefaults: true });
 
   /** 使用 toReactive 将 Ref 转换为响应式对象，同时保持响应性 */
-  return toReactive(config);
+  return toReactive<LogEnableConfig>(config);
 }
