@@ -1,8 +1,9 @@
 <script setup lang="ts">
   import { ref, onMounted, onUnmounted, watch } from 'vue';
-  import { useInterval, useRafFn } from '@vueuse/core';
+  import { useRafFn } from '@vueuse/core';
   import type { Leafer, Group } from 'leafer-ui';
   import { Pen } from 'leafer-ui';
+  import { useIdleCallback } from '../utils/useIdleCallback';
 
   /** 性能数据接口 */
   interface PerformanceData {
@@ -103,15 +104,12 @@
   });
 
   /**
-   * 使用 useInterval 定期更新性能数据（每秒更新一次）
-   * useInterval 会自动运行，我们在 callback 中判断是否需要更新
+   * 使用 useIdleCallback 在主线程空闲时更新性能数据
    */
-  useInterval(1000, {
-    callback: () => {
-      if (props.enabled) {
-        updatePerformanceData();
-      }
-    },
+  const { pause: pauseIdleCallback, resume: resumeIdleCallback } = useIdleCallback(() => {
+    if (props.enabled) {
+      updatePerformanceData();
+    }
   });
 
   /**
@@ -127,6 +125,9 @@
     // 启动 FPS 计算
     resumeRaf();
 
+    // 启动空闲时更新性能数据
+    resumeIdleCallback();
+
     // 立即更新一次性能数据，确保开启时能立即显示
     updatePerformanceData();
   }
@@ -137,6 +138,7 @@
   function stopPerformanceMonitor() {
     console.log('[性能监控] 停止性能监控');
     pauseRaf();
+    pauseIdleCallback();
   }
 
   /**
