@@ -93,8 +93,8 @@
     <div class="toolbar">
       <button
         :class="['tool-btn', {
-          active: effectiveToolType === 'pen',
-          'temp-active': isToolTemporarilyActive('pen')
+          active: effectiveToolType === ToolType.PEN,
+          'temp-active': isToolTemporarilyActive(ToolType.PEN)
         }]"
         @click="setToolType(ToolType.PEN)"
       >
@@ -102,8 +102,8 @@
       </button>
       <button
         :class="['tool-btn', {
-          active: effectiveToolType === 'eraser',
-          'temp-active': isToolTemporarilyActive('eraser')
+          active: effectiveToolType === ToolType.ERASER,
+          'temp-active': isToolTemporarilyActive(ToolType.ERASER)
         }]"
         @click="setToolType(ToolType.ERASER)"
       >
@@ -115,6 +115,13 @@
         title="切换触摸输入"
       >
         触摸: {{ toolConfig.touchEnabled ? '开' : '关' }}
+      </button>
+      <button
+        :class="['tool-btn', { active: toolConfig.brush.smartSmoothingEnabled }]"
+        @click="toolConfig.brush.smartSmoothingEnabled = !toolConfig.brush.smartSmoothingEnabled"
+        title="切换智能平滑（压感平滑+插值优化）"
+      >
+        智能平滑: {{ toolConfig.brush.smartSmoothingEnabled ? '开' : '关' }}
       </button>
       <button
         :class="['tool-btn', { active: performanceMonitorEnabled }]"

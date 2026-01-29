@@ -23,6 +23,8 @@ export interface BrushConfig {
   pressureEnabled: boolean
   /** 压感影响系数（0-1） */
   pressureFactor: number
+  /** 是否启用智能平滑（压感平滑+插值优化） */
+  smartSmoothingEnabled: boolean
 }
 
 /**
