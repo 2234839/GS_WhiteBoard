@@ -16,7 +16,7 @@
     AdaptiveSmoothingState,
   } from '@/utils/pressureSmoothing';
   import { useCanvasGestures } from '@/composables/useCanvasGestures';
-  import { useHistoryManager } from '@/composables/useHistoryManager';
+  import { pushState, undo, redo } from '@/utils/historyUtils';
   import PerformanceMonitor from './PerformanceMonitor.vue';
   import Toolbar from './Toolbar.vue';
   import CustomCursor from './CustomCursor.vue';
@@ -134,9 +134,14 @@
   } = useCanvasGestures(canvasRef, leaferInstance, toolConfig);
 
   /**
-   * 使用历史记录管理 composable
+   * 是否可以撤回
    */
-  const { canUndo, canRedo, pushState, undo, redo } = useHistoryManager();
+  const canUndo = computed(() => (props.canvasData?.undoStack.length ?? 0) > 0);
+
+  /**
+   * 是否可以重做
+   */
+  const canRedo = computed(() => (props.canvasData?.redoStack.length ?? 0) > 0);
 
   /**
    * 监听画布变换状态变化并保存到 canvasData
@@ -460,7 +465,9 @@
 
     // 如果所有指针都已释放，保存历史记录状态
     if (drawingStates.size === 0) {
-      pushState(mainGroup.value);
+      if (mainGroup.value && props.canvasData) {
+        pushState(mainGroup.value, props.canvasData.undoStack, props.canvasData.redoStack, props.canvasData.maxHistory);
+      }
     }
   }
 
@@ -523,17 +530,11 @@
       leafer.x = transform.offsetX;
       leafer.y = transform.offsetY;
 
-      // 加载保存的 Leafer JSON 数据
-      if (props.canvasData.leaferJson && props.canvasData.leaferJson !== '[]') {
-        try {
-          const elementsData = JSON.parse(props.canvasData.leaferJson);
-          console.log('加载画布数据，元素数量:', elementsData.length);
-          // 遍历每个元素数据并添加到 group
-          for (const elementData of elementsData) {
-            group.add(elementData);
-          }
-        } catch (error) {
-          console.error('加载画布数据失败:', error);
+      // 加载保存的 Leafer 数据
+      if (props.canvasData.leaferData && props.canvasData.leaferData.length > 0) {
+        // 遍历每个元素数据并添加到 group
+        for (const elementData of props.canvasData.leaferData) {
+          group.add(elementData);
         }
       }
     } else {
@@ -549,16 +550,11 @@
   function saveCanvasData() {
     if (!props.canvasData || !mainGroup.value) return;
 
-    try {
-      // 导出 mainGroup 的子元素数据
-      const children = mainGroup.value.children;
-      const elementsData = children.map(child => child.toJSON());
-      props.canvasData.leaferJson = JSON.stringify(elementsData);
-      props.canvasData.updatedAt = Date.now();
-      console.log('保存画布数据成功，元素数量:', elementsData.length);
-    } catch (error) {
-      console.error('保存画布数据失败:', error);
-    }
+    // 导出 mainGroup 的子元素数据
+    const children = mainGroup.value.children;
+    const elementsData = children.map(child => child.toJSON());
+    props.canvasData.leaferData = elementsData;
+    props.canvasData.updatedAt = Date.now();
   }
 
   /**
@@ -614,9 +610,9 @@
    * 清空画布
    */
   function clearCanvas() {
-    if (mainGroup.value) {
+    if (mainGroup.value && props.canvasData) {
       // 保存清空前的状态到历史记录
-      pushState(mainGroup.value);
+      pushState(mainGroup.value, props.canvasData.undoStack, props.canvasData.redoStack, props.canvasData.maxHistory);
 
       // LeaferJS 的正确清空方式：遍历删除所有子元素
       const children = [...mainGroup.value.children];
@@ -624,10 +620,8 @@
         mainGroup.value.remove(child);
       }
 
-      // 如果有画布数据，同时清空保存的数据
-      if (props.canvasData) {
-        saveCanvasData();
-      }
+      // 保存画布数据
+      saveCanvasData();
     }
   }
 
@@ -635,9 +629,9 @@
    * 撤回操作
    */
   function handleUndo() {
-    undo(mainGroup.value);
-    // 撤回后保存画布数据
-    if (props.canvasData) {
+    if (mainGroup.value && props.canvasData) {
+      undo(mainGroup.value, props.canvasData.undoStack, props.canvasData.redoStack);
+      // 撤回后保存画布数据
       saveCanvasData();
     }
   }
@@ -646,9 +640,9 @@
    * 重做操作
    */
   function handleRedo() {
-    redo(mainGroup.value);
-    // 重做后保存画布数据
-    if (props.canvasData) {
+    if (mainGroup.value && props.canvasData) {
+      redo(mainGroup.value, props.canvasData.undoStack, props.canvasData.redoStack);
+      // 重做后保存画布数据
       saveCanvasData();
     }
   }

@@ -3,6 +3,14 @@ import { computed } from 'vue';
 import type { ToolConfig, ToolType } from '@/types';
 
 /**
+ * 历史记录项（使用完整状态快照）
+ */
+interface HistoryEntry {
+  /** 快照（完整状态） */
+  snapshot: Record<string, unknown>[];
+}
+
+/**
  * 画布变换状态（缩放和移动）
  */
 interface CanvasTransform {
@@ -26,12 +34,18 @@ export interface CanvasData {
   createdAt: number;
   /** 更新时间 */
   updatedAt: number;
-  /** Leafer 画布 JSON 数据 */
-  leaferJson: string;
+  /** Leafer 画布数据 */
+  leaferData: Record<string, unknown>[];
   /** 画布变换状态 */
   transform: CanvasTransform;
   /** 工具配置 */
   toolConfig: ToolConfig;
+  /** 撤回栈 */
+  undoStack: HistoryEntry[];
+  /** 重做栈 */
+  redoStack: HistoryEntry[];
+  /** 最大历史记录数量 */
+  maxHistory: number;
 }
 
 /**
@@ -65,7 +79,7 @@ export function useCanvasData() {
       name,
       createdAt: Date.now(),
       updatedAt: Date.now(),
-      leaferJson: '[]',
+      leaferData: [],
       transform: {
         scale: 1,
         offsetX: 0,
@@ -86,6 +100,9 @@ export function useCanvasData() {
         },
         touchDrawingEnabled: true,
       },
+      undoStack: [],
+      redoStack: [],
+      maxHistory: 50,
     };
 
     canvases.value = [...canvases.value, newCanvas];
@@ -124,23 +141,23 @@ export function useCanvasData() {
   }
 
   /**
-   * 保存画布 Leafer JSON 数据
+   * 保存画布 Leafer 数据
    */
-  function saveCanvasLeaferJson(canvasId: string, jsonData: string) {
+  function saveCanvasLeaferData(canvasId: string, data: Record<string, unknown>[]) {
     const canvas = canvases.value.find((c) => c.id === canvasId);
     if (canvas) {
-      canvas.leaferJson = jsonData;
+      canvas.leaferData = data;
       canvas.updatedAt = Date.now();
     }
   }
 
   /**
-   * 清空画布 Leafer JSON 数据
+   * 清空画布 Leafer 数据
    */
-  function clearCanvasLeaferJson(canvasId: string) {
+  function clearCanvasLeaferData(canvasId: string) {
     const canvas = canvases.value.find((c) => c.id === canvasId);
     if (canvas) {
-      canvas.leaferJson = '[]';
+      canvas.leaferData = [];
       canvas.updatedAt = Date.now();
     }
   }
@@ -164,8 +181,8 @@ export function useCanvasData() {
     deleteCanvas,
     switchCanvas,
     updateCanvas,
-    saveCanvasLeaferJson,
-    clearCanvasLeaferJson,
+    saveCanvasLeaferData,
+    clearCanvasLeaferData,
     updateCanvasTransform,
   };
 }
