@@ -1,6 +1,7 @@
 <script setup lang="ts">
-  import { ref } from 'vue';
-  import type { ToolConfig, ToolType } from '@/types';
+  import { ref, computed } from 'vue';
+  import type { ToolConfig } from '@/types';
+  import { ToolType } from '@/types';
   import { useLogControl, LOG_CATEGORIES } from '@/composables/useLogControl';
 
   /**
@@ -11,6 +12,18 @@
   }
 
   const emit = defineEmits<Emits>();
+
+  /**
+   * Props 定义
+   */
+  interface Props {
+    /** 压感笔临时切换的状态（null 表示未临时切换） */
+    temporaryToolSwitch?: 'pen' | 'eraser' | null;
+  }
+
+  const props = withDefaults(defineProps<Props>(), {
+    temporaryToolSwitch: null,
+  });
 
   /**
    * 使用 defineModel 定义双向绑定的工具配置
@@ -31,6 +44,20 @@
 
   /** 日志控制面板是否展开 */
   const logPanelExpanded = ref(false);
+
+  /**
+   * 计算实际生效的工具类型（优先使用临时切换状态）
+   */
+  const effectiveToolType = computed(() => {
+    return props.temporaryToolSwitch || toolConfig.value.toolType;
+  });
+
+  /**
+   * 判断工具是否被临时激活
+   */
+  function isToolTemporarilyActive(toolType: ToolType): boolean {
+    return props.temporaryToolSwitch === toolType && toolConfig.value.toolType !== toolType;
+  }
 
   /**
    * 切换工具类型
@@ -65,14 +92,20 @@
   <div class="toolbar-container">
     <div class="toolbar">
       <button
-        :class="['tool-btn', { active: toolConfig.toolType === 'pen' }]"
-        @click="setToolType('pen' as ToolType)"
+        :class="['tool-btn', {
+          active: effectiveToolType === 'pen',
+          'temp-active': isToolTemporarilyActive('pen')
+        }]"
+        @click="setToolType(ToolType.PEN)"
       >
         画笔
       </button>
       <button
-        :class="['tool-btn', { active: toolConfig.toolType === 'eraser' }]"
-        @click="setToolType('eraser' as ToolType)"
+        :class="['tool-btn', {
+          active: effectiveToolType === 'eraser',
+          'temp-active': isToolTemporarilyActive('eraser')
+        }]"
+        @click="setToolType(ToolType.ERASER)"
       >
         橡皮擦
       </button>
@@ -153,6 +186,13 @@
     background-color: #1890ff;
     color: white;
     border-color: #1890ff;
+  }
+
+  .tool-btn.temp-active {
+    background-color: #52c41a;
+    color: white;
+    border-color: #52c41a;
+    box-shadow: 0 0 8px rgba(82, 196, 26, 0.6);
   }
 
   .arrow-icon {

@@ -52,6 +52,8 @@
   >();
   /** 是否正在使用压感笔（用于自动禁用触摸） */
   const isUsingPen = ref(false);
+  /** 压感笔临时切换状态（null表示未临时切换） */
+  const temporaryToolSwitch = ref<'pen' | 'eraser' | null>(null);
   /** 压力变化阈值，超过此值时创建新的路径段 */
   const PRESSURE_THRESHOLD = 0.05;
 
@@ -132,19 +134,22 @@
     if (e.pointerType === 'pen' && !isUsingPen.value) {
       isUsingPen.value = true;
       toolConfig.value.touchEnabled = false;
+
+      // 检测压感笔橡皮擦端（buttons === 32 表示橡皮擦端）
+      const isPenEraser = e.buttons === 32;
+
+      // 设置临时切换状态：只在压感笔端与当前工具不一致时才临时切换
+      if (isPenEraser && toolConfig.value.toolType !== 'eraser') {
+        // 橡皮擦端但当前是画笔 → 临时切换到橡皮擦
+        temporaryToolSwitch.value = 'eraser';
+      } else if (!isPenEraser && toolConfig.value.toolType === 'eraser') {
+        // 画笔端但当前是橡皮擦 → 临时切换到画笔
+        temporaryToolSwitch.value = 'pen';
+      }
     }
 
-    // 检测压感笔橡皮擦端
-    const isPenEraser = e.pointerType === 'pen' && e.buttons === 32;
-
-    // 确定是否使用橡皮擦
-    let isEraser = isPenEraser;
-    if (isPenEraser) {
-      toolConfig.value.toolType = 'eraser' as ToolType;
-      isEraser = true;
-    } else {
-      isEraser = toolConfig.value.toolType === 'eraser';
-    }
+    // 确定是否使用橡皮擦（优先使用临时状态，其次使用配置状态）
+    let isEraser = temporaryToolSwitch.value === 'eraser' || toolConfig.value.toolType === 'eraser';
 
     const rect = canvasRef.value.getBoundingClientRect();
     const x = e.clientX - rect.left;
@@ -227,6 +232,8 @@
     // 如果所有指针都已释放，检查是否是压感笔操作结束
     if (drawingStates.size === 0 && isUsingPen.value) {
       isUsingPen.value = false;
+      // 清除临时切换状态
+      temporaryToolSwitch.value = null;
       // 压感笔操作结束后，恢复触摸输入（如果用户没有手动关闭）
       // 这里保持当前状态，让用户手动控制
     }
@@ -245,6 +252,8 @@
     // 如果所有指针都已释放，检查是否是压感笔操作结束
     if (drawingStates.size === 0 && isUsingPen.value) {
       isUsingPen.value = false;
+      // 清除临时切换状态
+      temporaryToolSwitch.value = null;
     }
   }
 
@@ -381,6 +390,7 @@
     <Toolbar
       v-model:toolConfig="toolConfig"
       v-model:performanceMonitorEnabled="performanceMonitorEnabled"
+      :temporaryToolSwitch="temporaryToolSwitch"
       @clearCanvas="clearCanvas"
     />
 
