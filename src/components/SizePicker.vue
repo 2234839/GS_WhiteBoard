@@ -20,7 +20,7 @@
     unit?: string;
   }
 
-  const props = withDefaults(defineProps<Props>(), {
+  withDefaults(defineProps<Props>(), {
     min: 1,
     max: 50,
     presets: () => [2, 5, 10, 20, 30],
