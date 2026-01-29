@@ -118,8 +118,9 @@ export function useIdleCallback(callback: () => void, options: UseIdleCallbackOp
   function resume() {
     if (paused.value) {
       paused.value = false;
-      schedule();
     }
+    // 无论之前是否暂停，都开始调度
+    schedule();
   }
 
   /**

@@ -1,6 +1,6 @@
 <script setup lang="ts">
   import { ref, onUnmounted, watch } from 'vue';
-  import { useRafFn } from '@vueuse/core';
+  import { useRafFn, useThrottleFn } from '@vueuse/core';
   import type { Leafer, Group } from 'leafer-ui';
   import { Pen } from 'leafer-ui';
   import { useIdleCallback } from '../utils/useIdleCallback';
@@ -46,15 +46,9 @@
   const lastFpsUpdateTime = ref(0);
 
   /**
-   * 更新性能数据
+   * 更新性能数据（节流版本，每 1000ms 最多执行一次）
    */
-  function updatePerformanceData() {
-    console.log('[性能监控] 开始更新性能数据...', {
-      leaferInstance: !!props.leaferInstance,
-      mainGroup: !!props.mainGroup,
-      enabled: props.enabled,
-    });
-
+  const updatePerformanceData = useThrottleFn(() => {
     if (!props.leaferInstance || !props.mainGroup) {
       console.warn('[性能监控] 实例未准备好，跳过更新');
       return;
@@ -83,7 +77,7 @@
     performanceData.value.totalElements = totalElements;
     performanceData.value.pathCount = pathCount;
     performanceData.value.lastUpdateTime = Date.now();
-  }
+  }, 1000);
 
   /**
    * 使用 useRafFn 更新 FPS
@@ -95,7 +89,6 @@
     // 每 1000ms 更新一次 FPS
     if (now - lastFpsUpdateTime.value >= 1000) {
       performanceData.value.fps = Math.round((frameCount.value * 1000) / (now - lastFpsUpdateTime.value));
-      console.log('[性能监控] FPS 更新:', performanceData.value.fps);
       frameCount.value = 0;
       lastFpsUpdateTime.value = now;
     }
@@ -127,9 +120,6 @@
 
     // 启动空闲时更新性能数据
     resumeIdleCallback();
-
-    // 立即更新一次性能数据，确保开启时能立即显示
-    updatePerformanceData();
   }
 
   /**
@@ -169,13 +159,7 @@
         mainGroup: !!newMainGroup,
         enabled: props.enabled,
       });
-
-      if (props.enabled && newLeafer && newMainGroup) {
-        console.log('[性能监控] 实例已准备好，立即更新性能数据');
-        updatePerformanceData();
-      }
-    },
-    { immediate: true } // 立即执行一次
+    }
   );
 
   // 组件卸载时清理
