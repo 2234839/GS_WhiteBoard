@@ -1,7 +1,9 @@
 <script setup lang="ts">
-  import { ref, onMounted, onUnmounted, watch } from 'vue';
+  import { ref, onUnmounted, watch } from 'vue';
+  import { useRafFn, useThrottleFn } from '@vueuse/core';
   import type { Leafer, Group } from 'leafer-ui';
   import { Pen } from 'leafer-ui';
+  import { useIdleCallback } from '../utils/useIdleCallback';
 
   /** 性能数据接口 */
   interface PerformanceData {
@@ -40,106 +42,93 @@
   });
 
   /** FPS 计算相关 */
-  let frameCount = 0;
-  let lastFpsUpdateTime = 0;
-  let animationFrameId: number | null = null;
+  const frameCount = ref(0);
+  const lastFpsUpdateTime = ref(0);
 
   /**
-   * 更新性能数据
+   * 更新性能数据（节流版本，每 1000ms 最多执行一次）
    */
-  function updatePerformanceData() {
-    if (!props.leaferInstance || !props.mainGroup) return;
+  const updatePerformanceData = useThrottleFn(() => {
+    if (!props.leaferInstance || !props.mainGroup) {
+      console.warn('[性能监控] 实例未准备好，跳过更新');
+      return;
+    }
 
     // 计算总元素数量（Leafer 元素数量）
-    const totalElements = props.leaferInstance.children?.reduce((count, child) => {
-      return count + 1 + (child.children?.length || 0);
-    }, 0) || 0;
+    const totalElements = (props.leaferInstance.children as unknown[] | undefined)?.reduce(
+      (count: number, child: unknown) => {
+        const childWithChildren = child as { children?: unknown[] | null };
+        return count + 1 + (childWithChildren.children?.length || 0);
+      },
+      0
+    ) ?? 0;
 
     // 计算路径数量（只计算 mainGroup 中的 Pen 对象）
-    const pathCount = props.mainGroup.children?.filter(
-      (child) => child instanceof Pen
-    ).length || 0;
+    const pathCount = (props.mainGroup.children as unknown[] | undefined)?.filter(
+      (child): child is Pen => child instanceof Pen
+    ).length ?? 0;
+
+    console.log('[性能监控] 性能数据更新:', {
+      totalElements,
+      pathCount,
+      mainGroupChildren: props.mainGroup.children?.length,
+    });
 
     performanceData.value.totalElements = totalElements;
     performanceData.value.pathCount = pathCount;
     performanceData.value.lastUpdateTime = Date.now();
-  }
+  }, 1000);
 
   /**
-   * 更新 FPS
+   * 使用 useRafFn 更新 FPS
    */
-  function updateFPS() {
+  const { pause: pauseRaf, resume: resumeRaf } = useRafFn(() => {
+    frameCount.value++;
     const now = performance.now();
-    frameCount++;
 
     // 每 1000ms 更新一次 FPS
-    if (now - lastFpsUpdateTime >= 1000) {
-      performanceData.value.fps = Math.round((frameCount * 1000) / (now - lastFpsUpdateTime));
-      frameCount = 0;
-      lastFpsUpdateTime = now;
+    if (now - lastFpsUpdateTime.value >= 1000) {
+      performanceData.value.fps = Math.round((frameCount.value * 1000) / (now - lastFpsUpdateTime.value));
+      frameCount.value = 0;
+      lastFpsUpdateTime.value = now;
     }
-
-    // 继续下一帧
-    if (props.enabled) {
-      animationFrameId = requestAnimationFrame(updateFPS);
-    }
-  }
+  }, {
+    immediate: false,
+  });
 
   /**
-   * 在主线程空闲时更新性能数据
+   * 使用 useIdleCallback 在主线程空闲时更新性能数据
    */
-  function schedulePerformanceUpdate() {
-    if (!props.enabled) return;
-
-    // 使用 requestIdleCallback 在主线程空闲时更新
-    if ('requestIdleCallback' in window) {
-      window.requestIdleCallback(
-        () => {
-          if (props.enabled) {
-            updatePerformanceData();
-            // 安排下一次更新
-            schedulePerformanceUpdate();
-          }
-        },
-        { timeout: 3000 } // 设置超时，确保至少每秒更新一次
-      );
-    } else {
-      // 降级方案：使用 setTimeout 模拟
-      setTimeout(() => {
-        if (props.enabled) {
-          updatePerformanceData();
-          schedulePerformanceUpdate();
-        }
-      }, 500);
+  const { pause: pauseIdleCallback, resume: resumeIdleCallback } = useIdleCallback(() => {
+    if (props.enabled) {
+      updatePerformanceData();
     }
-  }
+  });
 
   /**
    * 启动性能监控
    */
   function startPerformanceMonitor() {
-    if (animationFrameId !== null) {
-      cancelAnimationFrame(animationFrameId);
-    }
+    console.log('[性能监控] 启动性能监控');
 
-    frameCount = 0;
-    lastFpsUpdateTime = performance.now();
+    // 重置 FPS 相关
+    frameCount.value = 0;
+    lastFpsUpdateTime.value = performance.now();
 
     // 启动 FPS 计算
-    animationFrameId = requestAnimationFrame(updateFPS);
+    resumeRaf();
 
-    // 启动性能数据更新（在主线程空闲时）
-    schedulePerformanceUpdate();
+    // 启动空闲时更新性能数据
+    resumeIdleCallback();
   }
 
   /**
    * 停止性能监控
    */
   function stopPerformanceMonitor() {
-    if (animationFrameId !== null) {
-      cancelAnimationFrame(animationFrameId);
-      animationFrameId = null;
-    }
+    console.log('[性能监控] 停止性能监控');
+    pauseRaf();
+    pauseIdleCallback();
   }
 
   /**
@@ -148,20 +137,30 @@
   watch(
     () => props.enabled,
     (newValue) => {
+      console.log('[性能监控] enabled 状态变化:', newValue);
       if (newValue) {
         startPerformanceMonitor();
       } else {
         stopPerformanceMonitor();
       }
-    }
+    },
+    { immediate: true } // 立即执行，确保组件初始化时正确设置状态
   );
 
-  // 组件挂载时启动监控
-  onMounted(() => {
-    if (props.enabled) {
-      startPerformanceMonitor();
+  /**
+   * 监听 leaferInstance 和 mainGroup 的变化
+   * 当实例准备好时，立即更新性能数据
+   */
+  watch(
+    [() => props.leaferInstance, () => props.mainGroup],
+    ([newLeafer, newMainGroup]) => {
+      console.log('[性能监控] 实例变化:', {
+        leaferInstance: !!newLeafer,
+        mainGroup: !!newMainGroup,
+        enabled: props.enabled,
+      });
     }
-  });
+  );
 
   // 组件卸载时清理
   onUnmounted(() => {
