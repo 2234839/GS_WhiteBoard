@@ -2,8 +2,8 @@
   import { ref, shallowRef, onMounted, onUnmounted } from 'vue';
   import { useStorage } from '@vueuse/core';
   import { Leafer, Pen, Group, Rect } from 'leafer-ui';
-  import type { ToolConfig, ToolType } from '../types';
-  import { createTestData } from '../utils/testData';
+  import type { ToolConfig, ToolType } from '@/types';
+  import { createTestData } from '@/utils/testData';
   import PerformanceMonitor from './PerformanceMonitor.vue';
   import Toolbar from './Toolbar.vue';
 

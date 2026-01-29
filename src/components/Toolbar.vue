@@ -1,7 +1,7 @@
 <script setup lang="ts">
   import { ref } from 'vue';
-  import type { ToolConfig, ToolType } from '../types';
-  import { useLogControl } from '../composables/useLogControl';
+  import type { ToolConfig, ToolType } from '@/types';
+  import { useLogControl } from '@/composables/useLogControl';
 
   /**
    * Emits 定义
