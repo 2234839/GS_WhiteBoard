@@ -153,7 +153,8 @@
       } else {
         stopPerformanceMonitor();
       }
-    }
+    },
+    { immediate: true } // 立即执行，确保组件初始化时正确设置状态
   );
 
   /**
