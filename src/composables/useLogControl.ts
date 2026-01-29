@@ -1,5 +1,4 @@
-import { useStorage } from '@vueuse/core';
-import { reactive } from 'vue';
+import { useStorage, toReactive } from '@vueuse/core';
 
 /**
  * 日志开关配置
@@ -22,7 +21,7 @@ interface LogEnableConfig {
  * ```ts
  * const logEnable = useLogControl();
  *
- * // 使用日志控制
+ * // 使用日志控制（直接访问属性，不需要 .value）
  * logEnable.performanceMonitor && console.log('[性能监控]', data);
  * logEnable.drawEvent && console.log('[绘制事件]', event);
  * ```
@@ -35,6 +34,6 @@ export function useLogControl() {
     penEvent: false,
   }, localStorage, { mergeDefaults: true });
 
-  /** 返回 reactive 对象，方便使用 */
-  return reactive(config.value);
+  /** 使用 toReactive 将 Ref 转换为响应式对象，同时保持响应性 */
+  return toReactive(config);
 }
