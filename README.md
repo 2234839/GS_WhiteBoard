@@ -56,6 +56,28 @@ pnpm run build
 pnpm run preview
 ```
 
+## 自动部署
+
+项目配置了 GitHub Actions 工作流，支持自动部署到 GitHub Pages。
+
+### 部署流程
+
+当代码推送到 `main` 分支时，GitHub Actions 会自动：
+
+1. 构建项目（`pnpm build`）
+2. 部署到 GitHub Pages
+
+### 配置 GitHub Pages
+
+首次使用需要配置：
+
+1. 进入仓库 **Settings** → **Pages**
+2. 在 **Build and deployment** 下，将 **Source** 设置为 **GitHub Actions**
+
+### 手动触发部署
+
+你也可以在 GitHub 仓库的 **Actions** 页面手动触发部署工作流。
+
 ## 项目结构
 
 ```
