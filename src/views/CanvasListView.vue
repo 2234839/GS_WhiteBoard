@@ -1,9 +1,105 @@
 <script setup lang="ts">
+import { ref, onMounted, onUnmounted } from 'vue';
 import { useRouter } from 'vue-router';
-import { useCanvasData } from '@/composables/useCanvasData';
+import { useCanvasData, type CanvasData } from '@/composables/useCanvasData';
+import { Leafer, Group } from 'leafer-ui';
+// 导入 export 插件（会自动注册）
+import '@leafer-in/export';
 
 const router = useRouter();
 const { canvases, createCanvas, deleteCanvas, switchCanvas } = useCanvasData();
+
+/**
+ * 预览图 URL 映射（画布ID -> 预览图URL）
+ */
+const previewUrls = ref<Map<string, string>>(new Map());
+
+/**
+ * 为单个画布生成预览图
+ */
+async function generatePreview(canvas: CanvasData): Promise<string | null> {
+  // 如果画布没有内容，返回 null
+  if (!canvas.leaferJson || canvas.leaferJson === '[]') {
+    return null;
+  }
+
+  let leafer: Leafer | null = null;
+  let group: Group | null = null;
+
+  try {
+    // 创建离屏 Leafer 实例用于生成预览图
+    leafer = new Leafer();
+
+    // 加载画布数据到 group
+    const elementsData = JSON.parse(canvas.leaferJson);
+    if (elementsData.length > 0) {
+      group = new Group();
+      for (const elementData of elementsData) {
+        group.add(elementData);
+      }
+      leafer.add(group);
+
+      // 直接导出 group，使用 trim 自动裁剪透明像素
+      const result = await group.export('png', {
+        blob: true,
+        scale: 0.5, // 缩放比例，生成更清晰的缩略图
+        trim: true, // 自动裁剪透明像素
+        fill: 'white', // 背景填充白色
+      });
+
+      // 创建 object URL
+      const blob = result.data as Blob;
+      return URL.createObjectURL(blob);
+    }
+
+    return null;
+  } catch (error) {
+    console.error('生成预览图失败:', error);
+    return null;
+  } finally {
+    // 确保销毁 Leafer 实例
+    if (leafer) {
+      leafer.destroy();
+      leafer = null;
+    }
+  }
+}
+
+/**
+ * 串行生成所有画布的预览图
+ */
+async function generateAllPreviews() {
+  // 清理旧的预览图 URL
+  for (const url of previewUrls.value.values()) {
+    URL.revokeObjectURL(url);
+  }
+  previewUrls.value.clear();
+
+  // 串行生成预览图
+  for (const canvas of canvases.value) {
+    const url = await generatePreview(canvas);
+    if (url) {
+      previewUrls.value.set(canvas.id, url);
+    }
+  }
+}
+
+/**
+ * 组件挂载时生成预览图
+ */
+onMounted(() => {
+  generateAllPreviews();
+});
+
+/**
+ * 组件卸载时清理所有 object URL
+ */
+onUnmounted(() => {
+  for (const url of previewUrls.value.values()) {
+    URL.revokeObjectURL(url);
+  }
+  previewUrls.value.clear();
+});
 
 /**
  * 创建新画布并跳转到编辑页
@@ -28,6 +124,12 @@ function handleOpenCanvas(id: string) {
 function handleDeleteCanvas(id: string, event: Event) {
   event.stopPropagation();
   if (confirm('确定要删除这个画布吗？')) {
+    // 清理对应的预览图 URL
+    const url = previewUrls.value.get(id);
+    if (url) {
+      URL.revokeObjectURL(url);
+      previewUrls.value.delete(id);
+    }
     deleteCanvas(id);
   }
 }
@@ -82,7 +184,13 @@ function formatTime(timestamp: number): string {
         @click="handleOpenCanvas(canvas.id)"
       >
         <div class="canvas-thumbnail">
-          <div class="thumbnail-placeholder">
+          <img
+            v-if="previewUrls.get(canvas.id)"
+            :src="previewUrls.get(canvas.id)"
+            :alt="canvas.name"
+            class="thumbnail-image"
+          />
+          <div v-else class="thumbnail-placeholder">
             <span>画布预览</span>
           </div>
         </div>
@@ -182,6 +290,14 @@ function formatTime(timestamp: number): string {
   display: flex;
   align-items: center;
   justify-content: center;
+  overflow: hidden;
+}
+
+.thumbnail-image {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  background: white;
 }
 
 .thumbnail-placeholder {
