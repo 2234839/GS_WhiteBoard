@@ -1,7 +1,7 @@
 <script setup lang="ts">
   import { ref, shallowRef, onMounted, onUnmounted, computed } from 'vue';
   import { useStorage } from '@vueuse/core';
-  import { Leafer, Pen, Group, Rect } from 'leafer-ui';
+  import { Leafer, Pen, Group } from 'leafer-ui';
   import type { ToolConfig, ToolType } from '@/types';
   import { createTestData } from '@/utils/testData';
   import {
@@ -16,6 +16,7 @@
     getAdaptivePressureAlpha,
     AdaptiveSmoothingState,
   } from '@/utils/pressureSmoothing';
+  import { useCanvasGestures } from '@/composables/useCanvasGestures';
   import PerformanceMonitor from './PerformanceMonitor.vue';
   import Toolbar from './Toolbar.vue';
   import CustomCursor from './CustomCursor.vue';
@@ -37,7 +38,7 @@
       type: 'path',
       size: 20,
     },
-    touchEnabled: true,
+    touchDrawingEnabled: true,
   }, localStorage, { mergeDefaults: true });
 
   /**
@@ -75,6 +76,16 @@
   const temporaryToolSwitch = ref<'pen' | 'eraser' | null>(null);
 
   /**
+   * 使用画布手势 composable
+   */
+  const {
+    clientToCanvasCoordinates,
+    handleTouchStart,
+    handleTouchMove,
+    handleTouchEnd,
+  } = useCanvasGestures(canvasRef, leaferInstance, toolConfig);
+
+  /**
    * 根据画笔粗细动态计算压感变化阈值
    * 粗笔使用更小的阈值，确保更早触发插值，得到更平滑的过渡
    */
@@ -105,10 +116,10 @@
   });
 
   /**
-   * 切换触摸输入是否启用
+   * 切换触摸绘制是否启用
    */
-  function setTouchEnabled(enabled: boolean) {
-    toolConfig.value.touchEnabled = enabled;
+  function setTouchDrawingEnabled(enabled: boolean) {
+    toolConfig.value.touchDrawingEnabled = enabled;
   }
 
   /**
@@ -150,15 +161,18 @@
   function handlePointerDown(e: PointerEvent) {
     if (!canvasRef.value || !mainGroup) return;
 
-    // 如果是触摸输入且触摸被禁用，则忽略
-    if (e.pointerType === 'touch' && !toolConfig.value.touchEnabled) {
+    // 处理触控手势（在触摸绘制关闭时）
+    handleTouchStart(e);
+
+    // 如果是触摸输入且触摸绘制被禁用，则忽略（用于手势操作）
+    if (e.pointerType === 'touch' && !toolConfig.value.touchDrawingEnabled) {
       return;
     }
 
     // 如果是压感笔，自动禁用触摸输入（防止手掌误触）
     if (e.pointerType === 'pen' && !isUsingPen.value) {
       isUsingPen.value = true;
-      toolConfig.value.touchEnabled = false;
+      toolConfig.value.touchDrawingEnabled = false;
 
       // 检测压感笔橡皮擦端（buttons === 32 表示橡皮擦端）
       const isPenEraser = e.buttons === 32;
@@ -178,9 +192,10 @@
       ? temporaryToolSwitch.value === 'eraser'
       : toolConfig.value.toolType === 'eraser';
 
-    const rect = canvasRef.value.getBoundingClientRect();
-    const x = e.clientX - rect.left;
-    const y = e.clientY - rect.top;
+    // 将客户端坐标转换为画布本地坐标
+    const coords = clientToCanvasCoordinates(e.clientX, e.clientY);
+    const x = coords.x;
+    const y = coords.y;
     const pressure = e.pressure || 0.5;
 
     // 捕获指针，防止压感笔事件被中断（解决绘制一小段就停顿的问题）
@@ -210,17 +225,21 @@
    * 原生 pointermove 事件处理（支持多点触控 + 动态压感）
    */
   function handlePointerMove(e: PointerEvent) {
-    // 如果是触摸输入且触摸被禁用，则忽略
-    if (e.pointerType === 'touch' && !toolConfig.value.touchEnabled) {
+    // 处理触控手势（在触摸绘制关闭时）
+    handleTouchMove(e);
+
+    // 如果是触摸输入且触摸绘制被禁用，则忽略（用于手势操作）
+    if (e.pointerType === 'touch' && !toolConfig.value.touchDrawingEnabled) {
       return;
     }
 
     const drawingState = drawingStates.get(e.pointerId);
     if (!drawingState || !canvasRef.value) return;
 
-    const rect = canvasRef.value.getBoundingClientRect();
-    const rawX = e.clientX - rect.left;
-    const rawY = e.clientY - rect.top;
+    // 将客户端坐标转换为画布本地坐标
+    const coords = clientToCanvasCoordinates(e.clientX, e.clientY);
+    const rawX = coords.x;
+    const rawY = coords.y;
     const rawPressure = e.pressure || 0.5;
     const currentTimestamp = Date.now();
 
@@ -340,6 +359,9 @@
    * 原生 pointerup 事件处理（支持多点触控）
    */
   function handlePointerUp(e: PointerEvent) {
+    // 处理触控手势结束
+    handleTouchEnd(e);
+
     // 释放指针捕获
     canvasRef.value?.releasePointerCapture(e.pointerId);
 
@@ -372,6 +394,9 @@
       // 清除临时切换状态
       temporaryToolSwitch.value = null;
     }
+
+    // 清理触控手势状态
+    handleTouchEnd(e);
   }
 
   /**
@@ -390,18 +415,8 @@
       type: 'design',
     });
 
-    // 添加白色背景（最底层）
-    const background = new Rect({
-      x: 0,
-      y: 0,
-      width: canvasRef.value.clientWidth,
-      height: canvasRef.value.clientHeight,
-      fill: '#ffffff',
-    });
-
-    leafer.add(background);
-
     // 创建主容器Group（所有绘制内容和橡皮擦都在这里）
+    // 注意：背景色已通过CSS设置在.whiteboard-canvas上，不再需要Leafer背景元素
     const group = new Group({
       x: 0,
       y: 0,
@@ -493,7 +508,7 @@
     setBrushColor,
     setBrushSize,
     setEraserSize,
-    setTouchEnabled,
+    setTouchDrawingEnabled,
     clearCanvas,
   });
 </script>
@@ -538,6 +553,8 @@
   .whiteboard-canvas {
     width: 100%;
     height: 100%;
+    /* 无限画布背景色 */
+    background-color: #ffffff;
     /* 禁止浏览器默认的触摸行为（防止 pointercancel 事件） */
     touch-action: none;
     /* 防止文本选择 */

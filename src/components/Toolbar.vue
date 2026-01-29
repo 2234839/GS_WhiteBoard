@@ -69,10 +69,10 @@
   }
 
   /**
-   * 切换触摸输入是否启用
+   * 切换触摸绘制是否启用
    */
-  function setTouchEnabled(enabled: boolean) {
-    toolConfig.value.touchEnabled = enabled;
+  function setTouchDrawingEnabled(enabled: boolean) {
+    toolConfig.value.touchDrawingEnabled = enabled;
   }
 
   /**
@@ -139,11 +139,11 @@
 
       <div class="toolbar-divider"></div>
       <button
-        :class="['tool-btn', { active: toolConfig.touchEnabled }]"
-        @click="setTouchEnabled(!toolConfig.touchEnabled)"
-        title="切换触摸输入"
+        :class="['tool-btn', { active: toolConfig.touchDrawingEnabled }]"
+        @click="setTouchDrawingEnabled(!toolConfig.touchDrawingEnabled)"
+        title="切换触摸绘制"
       >
-        触摸: {{ toolConfig.touchEnabled ? '开' : '关' }}
+        触摸绘制: {{ toolConfig.touchDrawingEnabled ? '开' : '关' }}
       </button>
       <button
         :class="['tool-btn', { active: toolConfig.brush.smartSmoothingEnabled }]"

@@ -47,6 +47,9 @@ export interface ToolConfig {
   brush: BrushConfig
   /** 橡皮擦配置 */
   eraser: EraserConfig
-  /** 是否启用触摸输入（手指） */
-  touchEnabled: boolean
+  /** 是否启用触摸绘制（手指）
+   * true: 触摸用于绘制
+   * false: 触摸用于画布缩放和移动手势
+   */
+  touchDrawingEnabled: boolean
 }
