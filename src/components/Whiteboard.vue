@@ -90,13 +90,6 @@
   }
 
   /**
-   * 继续绘制（向当前路径添加点）
-   */
-  function continuePath(path: Pen, x: number, y: number) {
-    path.lineTo(x, y);
-  }
-
-  /**
    * 原生 pointerdown 事件处理
    */
   function handlePointerDown(e: PointerEvent) {
@@ -120,6 +113,9 @@
     lastY = e.clientY - rect.top;
     const pressure = e.pressure || 0.5;
 
+    // 捕获指针，防止压感笔事件被中断（解决绘制一小段就停顿的问题）
+    canvasRef.value.setPointerCapture(e.pointerId);
+
     // 创建新路径（一次连续绘制只创建一个 Pen）
     currentPath = startPath(lastX, lastY, pressure, isEraserActive);
 
@@ -138,7 +134,7 @@
     const y = e.clientY - rect.top;
 
     // 向当前路径添加新点
-    continuePath(currentPath, x, y);
+    currentPath.lineTo(x, y);
 
     // 更新最后位置
     lastX = x;
@@ -148,21 +144,26 @@
   /**
    * 原生 pointerup 事件处理
    */
-  function handlePointerUp() {
+  function handlePointerUp(e: PointerEvent) {
+    // 释放指针捕获
+    canvasRef.value?.releasePointerCapture(e.pointerId);
+
     isDrawing = false;
     currentPath = null;
     isEraserActive = false;
   }
 
   /**
-   * 原生 pointerleave 事件处理
+   * 原生 pointercancel 事件处理（压感笔可能触发此事件导致绘制中断）
    */
-  function handlePointerLeave() {
-    if (isDrawing) {
-      isDrawing = false;
-      currentPath = null;
-      isEraserActive = false;
-    }
+  function handlePointerCancel(e: PointerEvent) {
+    // 释放指针捕获
+    canvasRef.value?.releasePointerCapture(e.pointerId);
+
+    // 停止绘制
+    isDrawing = false;
+    currentPath = null;
+    isEraserActive = false;
   }
 
   /**
@@ -256,7 +257,8 @@
       canvasRef.value.addEventListener('pointerdown', handlePointerDown);
       canvasRef.value.addEventListener('pointermove', handlePointerMove);
       canvasRef.value.addEventListener('pointerup', handlePointerUp);
-      canvasRef.value.addEventListener('pointerleave', handlePointerLeave);
+      // 监听 pointercancel 事件（压感笔可能触发此事件导致绘制中断）
+      canvasRef.value.addEventListener('pointercancel', handlePointerCancel);
     }
   });
 
@@ -266,7 +268,7 @@
       canvasRef.value.removeEventListener('pointerdown', handlePointerDown);
       canvasRef.value.removeEventListener('pointermove', handlePointerMove);
       canvasRef.value.removeEventListener('pointerup', handlePointerUp);
-      canvasRef.value.removeEventListener('pointerleave', handlePointerLeave);
+      canvasRef.value.removeEventListener('pointercancel', handlePointerCancel);
     }
 
     if (leaferInstance) {
@@ -318,6 +320,12 @@
   .whiteboard-canvas {
     width: 100%;
     height: 100%;
+    /* 禁止浏览器默认的触摸行为（防止 pointercancel 事件） */
+    touch-action: none;
+    /* 防止文本选择 */
+    user-select: none;
+    /* 防止拖拽 */
+    -webkit-user-drag: none;
   }
 
   .toolbar {
