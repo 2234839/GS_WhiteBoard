@@ -1,4 +1,5 @@
 import { Group, Pen } from 'leafer-ui';
+import { useLogControl } from '@/composables/useLogControl';
 
 /**
  * 绘制路径点
@@ -87,8 +88,9 @@ export function createTestData(
   } = {}
 ): void {
   const { realistic = true, segments = 20 } = options;
+  const logEnable = useLogControl();
 
-  console.log('创建测试数据...');
+  logEnable.testData && console.log('创建测试数据...');
 
   // 1. 红色线 (100,100) -> (300,100)
   const line1Points = realistic
@@ -101,7 +103,7 @@ export function createTestData(
     strokeWidth: 10,
     points: line1Points,
   });
-  console.log('✓ 红色线 (100,100) -> (300,100)');
+  logEnable.testData && console.log('✓ 红色线 (100,100) -> (300,100)');
 
   // 2. 蓝色线 (100,150) -> (300,150)
   const line2Points = realistic
@@ -114,7 +116,7 @@ export function createTestData(
     strokeWidth: 10,
     points: line2Points,
   });
-  console.log('✓ 蓝色线 (100,150) -> (300,150)');
+  logEnable.testData && console.log('✓ 蓝色线 (100,150) -> (300,150)');
 
   // 3. 橡皮擦竖线 - 应该擦除红色和蓝色线
   const eraser1Points = realistic
@@ -127,7 +129,7 @@ export function createTestData(
     eraserType: 'pixel',
     points: eraser1Points,
   });
-  console.log('✓ 橡皮擦竖线 (150,80) -> (150,170)，应该擦除红色和蓝色线');
+  logEnable.testData && console.log('✓ 橡皮擦竖线 (150,80) -> (150,170)，应该擦除红色和蓝色线');
 
   // 4. 绿色线 (100,200) -> (300,200)
   const line3Points = realistic
@@ -140,7 +142,7 @@ export function createTestData(
     strokeWidth: 10,
     points: line3Points,
   });
-  console.log('✓ 绿色线 (100,200) -> (300,200)');
+  logEnable.testData && console.log('✓ 绿色线 (100,200) -> (300,200)');
 
   // 5. 橡皮擦竖线 - 应该擦除绿色线
   const eraser2Points = realistic
@@ -153,9 +155,9 @@ export function createTestData(
     eraserType: 'pixel',
     points: eraser2Points,
   });
-  console.log('✓ 橡皮擦竖线 (200,180) -> (200,220)，应该擦除绿色线');
+  logEnable.testData && console.log('✓ 橡皮擦竖线 (200,180) -> (200,220)，应该擦除绿色线');
 
-  console.log('测试数据创建完成');
+  logEnable.testData && console.log('测试数据创建完成');
 }
 
 /**
@@ -166,5 +168,6 @@ export function clearTestData(mainGroup: Group): void {
   for (const child of children) {
     mainGroup.remove(child);
   }
-  console.log('测试数据已清空');
+  const logEnable = useLogControl();
+  logEnable.testData && console.log('测试数据已清空');
 }
