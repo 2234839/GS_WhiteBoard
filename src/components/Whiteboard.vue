@@ -1,12 +1,17 @@
 <script setup lang="ts">
   import { ref, onMounted, onUnmounted } from 'vue';
+  import { useStorage } from '@vueuse/core';
   import { Leafer, Pen, Group, Rect } from 'leafer-ui';
   import type { ToolConfig, ToolType } from '../types';
   import { createTestData } from '../utils/testData';
   import PerformanceMonitor from './PerformanceMonitor.vue';
+  import Toolbar from './Toolbar.vue';
 
-  /** 当前工具配置 */
-  const toolConfig = ref<ToolConfig>({
+  /**
+   * 使用 useStorage 持久化工具配置
+   * 所有状态都会自动保存到 localStorage
+   */
+  const toolConfig = useStorage<ToolConfig>('whiteboard-tool-config', {
     toolType: 'pen' as ToolType,
     brush: {
       color: '#000000',
@@ -18,8 +23,13 @@
       type: 'path',
       size: 20,
     },
-    touchEnabled: true, // 默认启用触摸输入
-  });
+    touchEnabled: true,
+  }, localStorage, { mergeDefaults: true });
+
+  /**
+   * 性能分析开关（持久化）
+   */
+  const performanceMonitorEnabled = useStorage('whiteboard-performance-monitor', false, localStorage);
 
   /** Leafer实例 */
   let leaferInstance: Leafer | null = null;
@@ -44,9 +54,6 @@
   const isUsingPen = ref(false);
   /** 压力变化阈值，超过此值时创建新的路径段 */
   const PRESSURE_THRESHOLD = 0.05;
-
-  /** 性能分析开关 */
-  const performanceMonitorEnabled = ref(false);
 
   /**
    * 获取笔刷大小（基于压感）
@@ -366,36 +373,12 @@
   <div class="whiteboard-container">
     <div ref="canvasRef" class="whiteboard-canvas"></div>
 
-    <!-- 工具栏 -->
-    <div class="toolbar">
-      <button
-        :class="['tool-btn', { active: toolConfig.toolType === 'pen' }]"
-        @click="setToolType('pen' as ToolType)"
-      >
-        画笔
-      </button>
-      <button
-        :class="['tool-btn', { active: toolConfig.toolType === 'eraser' }]"
-        @click="setToolType('eraser' as ToolType)"
-      >
-        橡皮擦
-      </button>
-      <button
-        :class="['tool-btn', { active: toolConfig.touchEnabled }]"
-        @click="setTouchEnabled(!toolConfig.touchEnabled)"
-        :title="isUsingPen ? '使用压感笔中，触摸已自动禁用' : '切换触摸输入'"
-      >
-        触摸: {{ toolConfig.touchEnabled ? '开' : '关' }}
-      </button>
-      <button
-        :class="['tool-btn', { active: performanceMonitorEnabled }]"
-        @click="performanceMonitorEnabled = !performanceMonitorEnabled"
-        title="切换性能分析"
-      >
-        性能
-      </button>
-      <button class="tool-btn" @click="clearCanvas">清空</button>
-    </div>
+    <!-- 工具栏组件 -->
+    <Toolbar
+      v-model:toolConfig="toolConfig"
+      v-model:performanceMonitorEnabled="performanceMonitorEnabled"
+      @clearCanvas="clearCanvas"
+    />
 
     <!-- 压感笔提示 -->
     <div v-if="isUsingPen" class="pen-indicator">
@@ -428,37 +411,6 @@
     user-select: none;
     /* 防止拖拽 */
     -webkit-user-drag: none;
-  }
-
-  .toolbar {
-    position: absolute;
-    top: 20px;
-    left: 20px;
-    display: flex;
-    gap: 10px;
-    padding: 10px;
-    background-color: white;
-    border-radius: 8px;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-  }
-
-  .tool-btn {
-    padding: 8px 16px;
-    border: 1px solid #ddd;
-    background-color: white;
-    border-radius: 4px;
-    cursor: pointer;
-    transition: all 0.2s;
-  }
-
-  .tool-btn:hover {
-    background-color: #f5f5f5;
-  }
-
-  .tool-btn.active {
-    background-color: #1890ff;
-    color: white;
-    border-color: #1890ff;
   }
 
   .pen-indicator {
