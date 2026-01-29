@@ -4,11 +4,11 @@ import vueDevTools from 'vite-plugin-vue-devtools'
 
 /**
  * GitHub Pages 部署配置
- * 使用相对路径 './' 以适应不同的部署环境
+ * 使用完整的仓库名路径确保资源正确加载
  */
 export default defineConfig({
   plugins: [vue(), vueDevTools()],
-  base: './',
+  base: '/GS_WhiteBoard/',
   resolve: {
     alias: {
       '@': '/src'
