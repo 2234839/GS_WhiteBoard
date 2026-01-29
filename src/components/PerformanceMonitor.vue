@@ -3,8 +3,8 @@
   import { useRafFn, useThrottleFn } from '@vueuse/core';
   import type { Leafer, Group } from 'leafer-ui';
   import { Pen } from 'leafer-ui';
-  import { useIdleCallback } from '../utils/useIdleCallback';
-  import { useLogControl } from '../composables/useLogControl';
+  import { useIdleCallback } from '@/utils/useIdleCallback';
+  import { useLogControl } from '@/composables/useLogControl';
 
   /** 性能数据接口 */
   interface PerformanceData {
