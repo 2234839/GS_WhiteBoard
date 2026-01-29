@@ -4,6 +4,14 @@
   import { Leafer, Pen, Group, Rect } from 'leafer-ui';
   import type { ToolConfig, ToolType } from '@/types';
   import { createTestData } from '@/utils/testData';
+  import {
+    exponentialMovingAverage,
+    PRESSURE_SMOOTHING_ALPHA,
+    interpolatePressureTransition,
+    shouldAcceptPoint,
+    smoothPosition,
+    POSITION_SMOOTHING_ALPHA,
+  } from '@/utils/pressureSmoothing';
   import PerformanceMonitor from './PerformanceMonitor.vue';
   import Toolbar from './Toolbar.vue';
   import CustomCursor from './CustomCursor.vue';
@@ -19,6 +27,7 @@
       baseLineWidth: 3,
       pressureEnabled: true,
       pressureFactor: 0.8,
+      smartSmoothingEnabled: true,
     },
     eraser: {
       type: 'path',
@@ -49,6 +58,10 @@
       lastPressure: number; // 上一次的压力值
       lastX: number; // 上一次的X坐标
       lastY: number; // 上一次的Y坐标
+      smoothedPressure: number; // 平滑后的压感值（用于指数移动平均）
+      smoothedX: number; // 平滑后的X坐标
+      smoothedY: number; // 平滑后的Y坐标
+      lastTimestamp: number; // 上一次绘制的时间戳
     }
   >();
   /** 是否正在使用压感笔（用于自动禁用触摸） */
@@ -167,10 +180,12 @@
       lastPressure: pressure,
       lastX: x,
       lastY: y,
+      smoothedPressure: pressure,
+      smoothedX: x,
+      smoothedY: y,
+      lastTimestamp: Date.now(),
     });
 
-    // 更新光标
-    updateCursor();
   }
 
   /**
@@ -186,25 +201,110 @@
     if (!drawingState || !canvasRef.value) return;
 
     const rect = canvasRef.value.getBoundingClientRect();
-    const x = e.clientX - rect.left;
-    const y = e.clientY - rect.top;
-    const pressure = e.pressure || 0.5;
+    const rawX = e.clientX - rect.left;
+    const rawY = e.clientY - rect.top;
+    const rawPressure = e.pressure || 0.5;
+    const currentTimestamp = Date.now();
+
+    // 根据配置决定是否使用智能平滑处理
+    const { brush } = toolConfig.value;
+    let x = rawX;
+    let y = rawY;
+    let pressure = rawPressure;
+
+    if (brush.smartSmoothingEnabled && !drawingState.isEraser) {
+      // 消抖过滤：检查是否应该接受这个点
+      const shouldAccept = shouldAcceptPoint(
+        {
+          x: drawingState.lastX,
+          y: drawingState.lastY,
+          pressure: drawingState.lastPressure,
+          timestamp: drawingState.lastTimestamp,
+        },
+        {
+          x: rawX,
+          y: rawY,
+          pressure: rawPressure,
+          timestamp: currentTimestamp,
+        }
+      );
+
+      // 如果不满足最小距离和时间间隔，跳过这个点
+      if (!shouldAccept) {
+        return;
+      }
+
+      // 位置平滑：使用指数移动平均
+      const smoothedPos = smoothPosition(
+        drawingState.smoothedX,
+        drawingState.smoothedY,
+        rawX,
+        rawY,
+        POSITION_SMOOTHING_ALPHA
+      );
+      x = smoothedPos.x;
+      y = smoothedPos.y;
+
+      // 压感平滑：使用指数移动平均
+      pressure = exponentialMovingAverage(
+        drawingState.smoothedPressure,
+        rawPressure,
+        PRESSURE_SMOOTHING_ALPHA
+      );
+
+      // 更新平滑后的值
+      drawingState.smoothedX = x;
+      drawingState.smoothedY = y;
+      drawingState.smoothedPressure = pressure;
+      drawingState.lastTimestamp = currentTimestamp;
+    }
 
     // 检查压力是否显著变化
     const pressureChanged =
       Math.abs(pressure - drawingState.lastPressure) > PRESSURE_THRESHOLD;
 
     if (pressureChanged && !drawingState.isEraser) {
-      // 压力变化显著，结束当前路径，创建新的路径段
-      // 创建新路径，起点为上一个点（保持连续性）
-      const newPath = startPath(drawingState.lastX, drawingState.lastY, pressure, false);
-      if (newPath) {
-        // 添加新点
-        newPath.lineTo(x, y);
+      // 压力变化显著，使用插值生成平滑过渡
+      const interpolationPoints = interpolatePressureTransition(
+        drawingState.lastX,
+        drawingState.lastY,
+        drawingState.lastPressure,
+        x,
+        y,
+        pressure
+      );
 
-        // 更新绘制状态
-        drawingState.path = newPath;
-        drawingState.lastPressure = pressure;
+      if (interpolationPoints.length > 0) {
+        // 有插值点：绘制每个插值点作为一个小路径段
+        let currentX = drawingState.lastX;
+        let currentY = drawingState.lastY;
+
+        for (const point of interpolationPoints) {
+          // 创建新的路径段
+          const newPath = startPath(currentX, currentY, point.pressure, false);
+          if (newPath) {
+            newPath.lineTo(point.x, point.y);
+            currentX = point.x;
+            currentY = point.y;
+            drawingState.path = newPath;
+          }
+        }
+
+        // 最后连接到目标点
+        const finalPath = startPath(currentX, currentY, pressure, false);
+        if (finalPath) {
+          finalPath.lineTo(x, y);
+          drawingState.path = finalPath;
+          drawingState.lastPressure = pressure;
+        }
+      } else {
+        // 没有插值点，直接创建新路径
+        const newPath = startPath(drawingState.lastX, drawingState.lastY, pressure, false);
+        if (newPath) {
+          newPath.lineTo(x, y);
+          drawingState.path = newPath;
+          drawingState.lastPressure = pressure;
+        }
       }
     } else {
       // 压力变化不大，继续使用当前路径
@@ -303,7 +403,6 @@
    */
   function setToolType(toolType: ToolType) {
     toolConfig.value.toolType = toolType;
-    updateCursor();
   }
 
   /**
