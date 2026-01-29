@@ -1,7 +1,6 @@
 <script setup lang="ts">
   import { ref, onMounted, onUnmounted, watch } from 'vue';
   import { useInterval, useRafFn } from '@vueuse/core';
-  import type { Leafer, Group } from 'leafer-ui';
   import { Pen } from 'leafer-ui';
 
   /** 性能数据接口 */
@@ -16,14 +15,28 @@
     lastUpdateTime: number;
   }
 
+  /**
+   * Leafer 实例接口（只包含我们需要的属性）
+   */
+  interface LeaferLike {
+    children?: unknown[];
+  }
+
+  /**
+   * Group 实例接口（只包含我们需要的属性）
+   */
+  interface GroupLike {
+    children?: unknown[];
+  }
+
   /** Props */
   interface Props {
     /** 是否启用性能监控 */
     enabled: boolean;
     /** Leafer 实例 */
-    leaferInstance?: Leafer | null;
+    leaferInstance?: LeaferLike | null;
     /** 主容器 Group */
-    mainGroup?: Group | null;
+    mainGroup?: GroupLike | null;
   }
 
   const props = withDefaults(defineProps<Props>(), {
@@ -60,14 +73,18 @@
     }
 
     // 计算总元素数量（Leafer 元素数量）
-    const totalElements = props.leaferInstance.children?.reduce((count, child) => {
-      return count + 1 + (child.children?.length || 0);
-    }, 0) || 0;
+    const totalElements = (props.leaferInstance.children as unknown[] | undefined)?.reduce(
+      (count: number, child: unknown) => {
+        const childWithChildren = child as { children?: unknown[] | null };
+        return count + 1 + (childWithChildren.children?.length || 0);
+      },
+      0
+    ) ?? 0;
 
     // 计算路径数量（只计算 mainGroup 中的 Pen 对象）
-    const pathCount = props.mainGroup.children?.filter(
-      (child) => child instanceof Pen
-    ).length || 0;
+    const pathCount = (props.mainGroup.children as unknown[] | undefined)?.filter(
+      (child): child is Pen => child instanceof Pen
+    ).length ?? 0;
 
     console.log('[性能监控] 性能数据更新:', {
       totalElements,
@@ -141,6 +158,7 @@
   watch(
     () => props.enabled,
     (newValue) => {
+      console.log('[性能监控] enabled 状态变化:', newValue);
       if (newValue) {
         startPerformanceMonitor();
       } else {
@@ -155,11 +173,19 @@
    */
   watch(
     [() => props.leaferInstance, () => props.mainGroup],
-    () => {
-      if (props.enabled && props.leaferInstance && props.mainGroup) {
+    ([newLeafer, newMainGroup]) => {
+      console.log('[性能监控] 实例变化:', {
+        leaferInstance: !!newLeafer,
+        mainGroup: !!newMainGroup,
+        enabled: props.enabled,
+      });
+
+      if (props.enabled && newLeafer && newMainGroup) {
+        console.log('[性能监控] 实例已准备好，立即更新性能数据');
         updatePerformanceData();
       }
-    }
+    },
+    { immediate: true } // 立即执行一次
   );
 
   // 组件挂载时启动监控

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-  import { ref, onMounted, onUnmounted } from 'vue';
+  import { ref, shallowRef, onMounted, onUnmounted } from 'vue';
   import { useStorage } from '@vueuse/core';
   import { Leafer, Pen, Group, Rect } from 'leafer-ui';
   import type { ToolConfig, ToolType } from '../types';
@@ -31,10 +31,10 @@
    */
   const performanceMonitorEnabled = useStorage('whiteboard-performance-monitor', false, localStorage);
 
-  /** Leafer实例 */
-  let leaferInstance: Leafer | null = null;
-  /** 主容器Group（所有绘制内容和橡皮擦都在这里） */
-  let mainGroup: Group | null = null;
+  /** Leafer实例（使用 shallowRef 避免深度响应式影响性能） */
+  const leaferInstance = shallowRef<Leafer | null>(null);
+  /** 主容器Group（使用 shallowRef 避免深度响应式影响性能） */
+  const mainGroup = shallowRef<Group | null>(null);
   /** 画布容器ref */
   const canvasRef = ref<HTMLDivElement | null>(null);
 
@@ -88,7 +88,7 @@
    * 开始绘制（创建新的路径）
    */
   function startPath(x: number, y: number, pressure: number, isEraser: boolean) {
-    if (!mainGroup) return null;
+    if (!mainGroup.value) return null;
     const { brush, eraser } = toolConfig.value;
     const brushSize =
       isEraser ? eraser.size : getBrushSize(pressure, brush.baseLineWidth, brush.pressureEnabled);
@@ -112,7 +112,7 @@
     path.lineTo(x, y); // 绘制一个点
 
     // 添加到 mainGroup
-    mainGroup.add(path);
+    mainGroup.value.add(path);
 
     return path;
   }
@@ -255,11 +255,11 @@
     if (!canvasRef.value) return;
 
     // 销毁旧实例
-    if (leaferInstance) {
-      leaferInstance.destroy();
+    if (leaferInstance.value) {
+      leaferInstance.value.destroy();
     }
 
-    leaferInstance = new Leafer({
+    const leafer = new Leafer({
       view: canvasRef.value,
       type: 'design',
     });
@@ -273,19 +273,23 @@
       fill: '#ffffff',
     });
 
-    leaferInstance.add(background);
+    leafer.add(background);
 
     // 创建主容器Group（所有绘制内容和橡皮擦都在这里）
-    mainGroup = new Group({
+    const group = new Group({
       x: 0,
       y: 0,
     });
 
-    leaferInstance.add(mainGroup);
+    leafer.add(group);
+
+    // 更新 ref
+    leaferInstance.value = leafer;
+    mainGroup.value = group;
 
     // ===== 创建测试数据 =====
     // 使用 realistic 模式，模拟真实绘制（多小段路径）
-    createTestData(mainGroup, { realistic: true, segments: 20 });
+    createTestData(group, { realistic: true, segments: 20 });
   }
 
   /**
@@ -321,11 +325,11 @@
    * 清空画布
    */
   function clearCanvas() {
-    if (mainGroup) {
+    if (mainGroup.value) {
       // LeaferJS 的正确清空方式：遍历删除所有子元素
-      const children = [...mainGroup.children];
+      const children = [...mainGroup.value.children];
       for (const child of children) {
-        mainGroup.remove(child);
+        mainGroup.value.remove(child);
       }
     }
   }
@@ -353,8 +357,8 @@
       canvasRef.value.removeEventListener('pointercancel', handlePointerCancel);
     }
 
-    if (leaferInstance) {
-      leaferInstance.destroy();
+    if (leaferInstance.value) {
+      leaferInstance.value.destroy();
     }
   });
 
