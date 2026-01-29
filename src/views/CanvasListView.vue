@@ -19,7 +19,7 @@ const previewUrls = ref<Map<string, string>>(new Map());
  */
 async function generatePreview(canvas: CanvasData): Promise<string | null> {
   // 如果画布没有内容，返回 null
-  if (!canvas.leaferJson || canvas.leaferJson === '[]') {
+  if (!canvas.leaferData || canvas.leaferData.length === 0) {
     return null;
   }
 
@@ -31,7 +31,7 @@ async function generatePreview(canvas: CanvasData): Promise<string | null> {
     leafer = new Leafer();
 
     // 加载画布数据到 group
-    const elementsData = JSON.parse(canvas.leaferJson);
+    const elementsData = canvas.leaferData;
     if (elementsData.length > 0) {
       group = new Group();
       for (const elementData of elementsData) {
