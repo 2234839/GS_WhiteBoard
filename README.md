@@ -60,6 +60,8 @@ pnpm run preview
 
 项目配置了 GitHub Actions 工作流，支持自动部署到 GitHub Pages。
 
+🌐 **在线访问地址：** [https://2234839.github.io/GS_WhiteBoard/](https://2234839.github.io/GS_WhiteBoard/)
+
 ### 部署流程
 
 当代码推送到 `main` 分支时，GitHub Actions 会自动：
