@@ -10,6 +10,8 @@ interface LogEnableConfig {
   drawEvent: boolean;
   /** 压感笔日志 */
   penEvent: boolean;
+  /** 测试数据日志 */
+  testData: boolean;
 }
 
 /**
@@ -32,6 +34,7 @@ export function useLogControl() {
     performanceMonitor: false,
     drawEvent: false,
     penEvent: false,
+    testData: false,
   }, localStorage, { mergeDefaults: true });
 
   /** 使用 toReactive 将 Ref 转换为响应式对象，同时保持响应性 */
