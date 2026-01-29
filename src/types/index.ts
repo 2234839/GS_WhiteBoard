@@ -53,3 +53,15 @@ export interface ToolConfig {
    */
   touchDrawingEnabled: boolean
 }
+
+/**
+ * 画布变换状态（缩放和移动）
+ */
+export interface CanvasTransform {
+  /** 缩放比例 */
+  scale: number
+  /** X轴偏移 */
+  offsetX: number
+  /** Y轴偏移 */
+  offsetY: number
+}

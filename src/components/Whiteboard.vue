@@ -1,15 +1,14 @@
 <script setup lang="ts">
-  import { ref, shallowRef, onMounted, onUnmounted, computed } from 'vue';
+  import { ref, shallowRef, onMounted, onUnmounted, computed, watch } from 'vue';
   import { useStorage } from '@vueuse/core';
   import { Leafer, Pen, Group } from 'leafer-ui';
   import type { ToolConfig, ToolType } from '@/types';
+  import type { CanvasData } from '@/composables/useCanvasData';
   import { createTestData } from '@/utils/testData';
   import {
     exponentialMovingAverage,
-    DEFAULT_PRESSURE_SMOOTHING_ALPHA,
     DEFAULT_POSITION_SMOOTHING_ALPHA,
     adaptiveInterpolatePressureTransition,
-    InterpolationConfig,
     shouldAcceptPoint,
     smoothPosition,
     initAdaptiveSmoothingState,
@@ -22,10 +21,28 @@
   import CustomCursor from './CustomCursor.vue';
 
   /**
-   * 使用 useStorage 持久化工具配置
-   * 所有状态都会自动保存到 localStorage
+   * 组件 Props
    */
-  const toolConfig = useStorage<ToolConfig>('whiteboard-tool-config', {
+  interface Props {
+    /** 画布数据（可选，如果不传则使用本地存储） */
+    canvasData?: CanvasData;
+    /** 是否显示返回按钮 */
+    showBackButton?: boolean;
+  }
+
+  const props = defineProps<Props>();
+
+  /**
+   * 定义 emits
+   */
+  const emit = defineEmits<{
+    back: [];
+  }>();
+
+  /**
+   * 默认工具配置
+   */
+  const defaultToolConfig: ToolConfig = {
     toolType: 'pen' as ToolType,
     brush: {
       color: '#000000',
@@ -39,7 +56,36 @@
       size: 20,
     },
     touchDrawingEnabled: true,
-  }, localStorage, { mergeDefaults: true });
+  };
+
+  /**
+   * 本地存储的工具配置（当没有 canvasData 时使用）
+   */
+  const localStorageToolConfig = useStorage<ToolConfig>(
+    'whiteboard-tool-config',
+    defaultToolConfig,
+    localStorage,
+    { mergeDefaults: true }
+  );
+
+  /**
+   * 工具配置计算属性
+   * 如果有 canvasData，使用其 toolConfig；否则使用 localStorage
+   */
+  const toolConfig = computed<ToolConfig>({
+    get: () => {
+      return props.canvasData?.toolConfig || localStorageToolConfig.value;
+    },
+    set: (value) => {
+      if (props.canvasData) {
+        // 同步到 canvasData
+        props.canvasData.toolConfig = value;
+      } else {
+        // 同步到 localStorage
+        localStorageToolConfig.value = value;
+      }
+    },
+  });
 
   /**
    * 性能分析开关（持久化）
@@ -83,7 +129,23 @@
     handleTouchStart,
     handleTouchMove,
     handleTouchEnd,
+    touchStartCanvasState,
   } = useCanvasGestures(canvasRef, leaferInstance, toolConfig);
+
+  /**
+   * 监听画布变换状态变化并保存到 canvasData
+   * 当手势结束时保存变换状态
+   */
+  watch(touchStartCanvasState, (state, oldState) => {
+    // 只在手势结束时（从有状态变为无状态）保存
+    if (oldState && !state && leaferInstance.value && props.canvasData) {
+      props.canvasData.transform = {
+        scale: leaferInstance.value.scaleX || 1,
+        offsetX: leaferInstance.value.x || 0,
+        offsetY: leaferInstance.value.y || 0,
+      };
+    }
+  });
 
   /**
    * 根据画笔粗细动态计算压感变化阈值
@@ -119,7 +181,10 @@
    * 切换触摸绘制是否启用
    */
   function setTouchDrawingEnabled(enabled: boolean) {
-    toolConfig.value.touchDrawingEnabled = enabled;
+    toolConfig.value = {
+      ...toolConfig.value,
+      touchDrawingEnabled: enabled,
+    };
   }
 
   /**
@@ -172,7 +237,10 @@
     // 如果是压感笔，自动禁用触摸输入（防止手掌误触）
     if (e.pointerType === 'pen' && !isUsingPen.value) {
       isUsingPen.value = true;
-      toolConfig.value.touchDrawingEnabled = false;
+      toolConfig.value = {
+        ...toolConfig.value,
+        touchDrawingEnabled: false,
+      };
 
       // 检测压感笔橡皮擦端（buttons === 32 表示橡皮擦端）
       const isPenEraser = e.buttons === 32;
@@ -373,8 +441,15 @@
       isUsingPen.value = false;
       // 清除临时切换状态
       temporaryToolSwitch.value = null;
-      // 压感笔操作结束后，恢复触摸输入（如果用户没有手动关闭）
-      // 这里保持当前状态，让用户手动控制
+      // 压感笔操作结束后，保存画布数据
+      if (props.canvasData && leaferInstance.value) {
+        saveCanvasData();
+      }
+    }
+
+    // 如果没有使用压感笔，也保存画布数据
+    if (drawingStates.size === 0 && !isUsingPen.value && props.canvasData && leaferInstance.value) {
+      saveCanvasData();
     }
   }
 
@@ -428,37 +503,100 @@
     leaferInstance.value = leafer;
     mainGroup.value = group;
 
-    // ===== 创建测试数据 =====
-    // 使用 realistic 模式，模拟真实绘制（多小段路径）
-    createTestData(group, { realistic: true, segments: 20 });
+    // 加载画布数据
+    if (props.canvasData) {
+      // 应用保存的变换状态
+      const { transform } = props.canvasData;
+      leafer.scaleX = transform.scale;
+      leafer.scaleY = transform.scale;
+      leafer.x = transform.offsetX;
+      leafer.y = transform.offsetY;
+
+      // 加载保存的 Leafer JSON 数据
+      if (props.canvasData.leaferJson && props.canvasData.leaferJson !== '[]') {
+        try {
+          const elementsData = JSON.parse(props.canvasData.leaferJson);
+          console.log('加载画布数据，元素数量:', elementsData.length);
+          // 遍历每个元素数据并添加到 group
+          for (const elementData of elementsData) {
+            group.add(elementData);
+          }
+        } catch (error) {
+          console.error('加载画布数据失败:', error);
+        }
+      }
+    } else {
+      // ===== 创建测试数据（仅在没有传入 canvasData 时） =====
+      // 使用 realistic 模式，模拟真实绘制（多小段路径）
+      createTestData(group, { realistic: true, segments: 20 });
+    }
+  }
+
+  /**
+   * 保存画布数据到 canvasData
+   */
+  function saveCanvasData() {
+    if (!props.canvasData || !mainGroup.value) return;
+
+    try {
+      // 导出 mainGroup 的子元素数据
+      const children = mainGroup.value.children;
+      const elementsData = children.map(child => child.toJSON());
+      props.canvasData.leaferJson = JSON.stringify(elementsData);
+      props.canvasData.updatedAt = Date.now();
+      console.log('保存画布数据成功，元素数量:', elementsData.length);
+    } catch (error) {
+      console.error('保存画布数据失败:', error);
+    }
   }
 
   /**
    * 切换工具
    */
   function setToolType(toolType: ToolType) {
-    toolConfig.value.toolType = toolType;
+    toolConfig.value = {
+      ...toolConfig.value,
+      toolType,
+    };
   }
 
   /**
    * 设置画笔颜色
    */
   function setBrushColor(color: string) {
-    toolConfig.value.brush.color = color;
+    toolConfig.value = {
+      ...toolConfig.value,
+      brush: {
+        ...toolConfig.value.brush,
+        color,
+      },
+    };
   }
 
   /**
    * 设置画笔粗细
    */
   function setBrushSize(size: number) {
-    toolConfig.value.brush.baseLineWidth = size;
+    toolConfig.value = {
+      ...toolConfig.value,
+      brush: {
+        ...toolConfig.value.brush,
+        baseLineWidth: size,
+      },
+    };
   }
 
   /**
    * 设置橡皮擦粗细
    */
   function setEraserSize(size: number) {
-    toolConfig.value.eraser.size = size;
+    toolConfig.value = {
+      ...toolConfig.value,
+      eraser: {
+        ...toolConfig.value.eraser,
+        size,
+      },
+    };
   }
 
   /**
@@ -470,6 +608,11 @@
       const children = [...mainGroup.value.children];
       for (const child of children) {
         mainGroup.value.remove(child);
+      }
+
+      // 如果有画布数据，同时清空保存的数据
+      if (props.canvasData) {
+        saveCanvasData();
       }
     }
   }
@@ -525,7 +668,9 @@
       v-model:toolConfig="toolConfig"
       v-model:performanceMonitorEnabled="performanceMonitorEnabled"
       :temporaryToolSwitch="temporaryToolSwitch"
+      :show-back-button="showBackButton"
       @clearCanvas="clearCanvas"
+      @back="emit('back')"
     />
 
     <!-- 压感笔提示 -->

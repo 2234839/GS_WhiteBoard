@@ -11,6 +11,7 @@
    */
   interface Emits {
     (e: 'clearCanvas'): void;
+    (e: 'back'): void;
   }
 
   const emit = defineEmits<Emits>();
@@ -21,10 +22,13 @@
   interface Props {
     /** 压感笔临时切换的状态（null 表示未临时切换） */
     temporaryToolSwitch?: 'pen' | 'eraser' | null;
+    /** 是否显示返回按钮 */
+    showBackButton?: boolean;
   }
 
   const props = withDefaults(defineProps<Props>(), {
     temporaryToolSwitch: null,
+    showBackButton: false,
   });
 
   /**
@@ -93,6 +97,16 @@
 <template>
   <div class="toolbar-container">
     <div class="toolbar">
+      <!-- 返回按钮（如果需要显示） -->
+      <button
+        v-if="showBackButton"
+        class="tool-btn back-btn"
+        @click="emit('back')"
+        title="返回画布列表"
+      >
+        ←
+      </button>
+
       <button
         :class="['tool-btn', {
           active: effectiveToolType === ToolType.PEN,
@@ -221,6 +235,18 @@
     border-radius: 4px;
     cursor: pointer;
     transition: all 0.2s;
+  }
+
+  .tool-btn.back-btn {
+    padding: 8px 14px;
+    font-size: 16px;
+    font-weight: bold;
+  }
+
+  .tool-btn.back-btn:hover {
+    background-color: #1890ff;
+    color: white;
+    border-color: #1890ff;
   }
 
   .tool-btn:hover {

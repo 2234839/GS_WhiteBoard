@@ -1,16 +1,6 @@
-import { ref, type Ref } from 'vue';
+import { ref, type Ref, type ComputedRef } from 'vue';
 import type { Leafer } from 'leafer-ui';
 import type { ToolConfig } from '@/types';
-
-/**
- * 画布触控手势状态
- */
-interface TouchGestureState {
-  /** 触控指针的初始位置 Map<pointerId, {x, y}> */
-  touchStartPositions: Ref<Map<number, { x: number; y: number }>>;
-  /** 触控开始时的画布状态 */
-  touchStartCanvasState: Ref<{ scale: number; offsetX: number; offsetY: number } | null>;
-}
 
 /**
  * 画布手势处理的 composable
@@ -19,7 +9,7 @@ interface TouchGestureState {
 export function useCanvasGestures(
   canvasRef: Ref<HTMLDivElement | null>,
   leaferInstance: Ref<Leafer | null>,
-  toolConfig: Ref<ToolConfig>
+  toolConfig: Ref<ToolConfig> | ComputedRef<ToolConfig>
 ) {
   /** 触控指针的初始位置 */
   const touchStartPositions = ref<Map<number, { x: number; y: number }>>(new Map());
