@@ -1,11 +1,12 @@
 <script setup lang="ts">
-  import { ref, shallowRef, onMounted, onUnmounted } from 'vue';
+  import { ref, shallowRef, onMounted, onUnmounted, computed } from 'vue';
   import { useStorage } from '@vueuse/core';
   import { Leafer, Pen, Group, Rect } from 'leafer-ui';
   import type { ToolConfig, ToolType } from '@/types';
   import { createTestData } from '@/utils/testData';
   import PerformanceMonitor from './PerformanceMonitor.vue';
   import Toolbar from './Toolbar.vue';
+  import CustomCursor from './CustomCursor.vue';
 
   /**
    * 使用 useStorage 持久化工具配置
@@ -67,17 +68,11 @@
   }
 
   /**
-   * 更新光标样式
+   * 计算当前生效的工具类型
    */
-  function updateCursor() {
-    if (!canvasRef.value) return;
-
-    if (toolConfig.value.toolType === 'eraser') {
-      canvasRef.value.style.cursor = 'cell'; // 橡皮擦光标
-    } else {
-      canvasRef.value.style.cursor = 'crosshair'; // 画笔光标
-    }
-  }
+  const currentToolType = computed(() => {
+    return temporaryToolSwitch.value || toolConfig.value.toolType;
+  });
 
   /**
    * 切换触摸输入是否启用
@@ -148,8 +143,10 @@
       }
     }
 
-    // 确定是否使用橡皮擦（优先使用临时状态，其次使用配置状态）
-    let isEraser = temporaryToolSwitch.value === 'eraser' || toolConfig.value.toolType === 'eraser';
+    // 确定是否使用橡皮擦（如果有临时切换状态则完全使用临时状态，否则使用配置状态）
+    let isEraser = temporaryToolSwitch.value
+      ? temporaryToolSwitch.value === 'eraser'
+      : toolConfig.value.toolType === 'eraser';
 
     const rect = canvasRef.value.getBoundingClientRect();
     const x = e.clientX - rect.left;
@@ -385,6 +382,9 @@
 <template>
   <div class="whiteboard-container">
     <div ref="canvasRef" class="whiteboard-canvas"></div>
+
+    <!-- 自定义光标组件 -->
+    <CustomCursor :toolType="currentToolType as ToolType" :visible="isUsingPen" />
 
     <!-- 工具栏组件 -->
     <Toolbar
