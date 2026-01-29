@@ -2,6 +2,7 @@
   import { ref, onMounted, onUnmounted } from 'vue';
   import { Leafer, Pen, Group, Rect } from 'leafer-ui';
   import type { ToolConfig, ToolType } from '../types';
+  import { createTestData } from '../utils/testData';
 
   /** 当前工具配置 */
   const toolConfig = ref<ToolConfig>({
@@ -199,72 +200,9 @@
 
     leaferInstance.add(mainGroup);
 
-    // ===== 测试数据：验证橡皮擦 =====
-    console.log('创建测试数据...');
-
-    // 1. 红色线
-    const line1 = new Pen();
-    line1.setStyle({
-      stroke: '#FF0000',
-      strokeWidth: 10,
-      strokeCap: 'round',
-    });
-    line1.moveTo(100, 100);
-    line1.lineTo(300, 100);
-    mainGroup.add(line1);
-    console.log('✓ 红色线');
-
-    // 2. 蓝色线
-    const line2 = new Pen();
-    line2.setStyle({
-      stroke: '#0000FF',
-      strokeWidth: 10,
-      strokeCap: 'round',
-    });
-    line2.moveTo(100, 150);
-    line2.lineTo(300, 150);
-    mainGroup.add(line2);
-    console.log('✓ 蓝色线');
-
-    // 3. 橡皮擦竖线 - 应该擦除红色和蓝色线
-    const eraser1 = new Pen();
-    eraser1.setStyle({
-      stroke: 'rgba(0,0,0,1)',
-      strokeWidth: 30,
-      strokeCap: 'round',
-    });
-    eraser1.eraser = 'pixel';
-    eraser1.moveTo(150, 80);
-    eraser1.lineTo(150, 170);
-    mainGroup.add(eraser1);
-    console.log('✓ 橡皮擦竖线');
-
-    // 4. 绿色线
-    const line3 = new Pen();
-    line3.setStyle({
-      stroke: '#00FF00',
-      strokeWidth: 10,
-      strokeCap: 'round',
-    });
-    line3.moveTo(100, 200);
-    line3.lineTo(300, 200);
-    mainGroup.add(line3);
-    console.log('✓ 绿色线');
-
-    // 5. 橡皮擦竖线 - 应该擦除绿色线
-    const eraser2 = new Pen();
-    eraser2.setStyle({
-      stroke: 'rgba(0,0,0,1)',
-      strokeWidth: 30,
-      strokeCap: 'round',
-    });
-    eraser2.eraser = true;
-    eraser2.moveTo(200, 180);
-    eraser2.lineTo(200, 220);
-    mainGroup.add(eraser2);
-    console.log('✓ 第二条橡皮擦竖线');
-
-    console.log('Leafer画布初始化完成，测试数据已添加');
+    // ===== 创建测试数据 =====
+    // 使用 realistic 模式，模拟真实绘制（多小段路径）
+    createTestData(mainGroup, { realistic: true, segments: 20 });
   }
 
   /**
