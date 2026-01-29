@@ -1,6 +1,7 @@
 <script setup lang="ts">
   import { ref, onMounted, onUnmounted, watch } from 'vue';
   import { useInterval, useRafFn } from '@vueuse/core';
+  import type { Leafer, Group } from 'leafer-ui';
   import { Pen } from 'leafer-ui';
 
   /** 性能数据接口 */
@@ -15,28 +16,14 @@
     lastUpdateTime: number;
   }
 
-  /**
-   * Leafer 实例接口（只包含我们需要的属性）
-   */
-  interface LeaferLike {
-    children?: unknown[];
-  }
-
-  /**
-   * Group 实例接口（只包含我们需要的属性）
-   */
-  interface GroupLike {
-    children?: unknown[];
-  }
-
   /** Props */
   interface Props {
     /** 是否启用性能监控 */
     enabled: boolean;
     /** Leafer 实例 */
-    leaferInstance?: LeaferLike | null;
+    leaferInstance?: Leafer | null;
     /** 主容器 Group */
-    mainGroup?: GroupLike | null;
+    mainGroup?: Group | null;
   }
 
   const props = withDefaults(defineProps<Props>(), {
