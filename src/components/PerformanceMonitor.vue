@@ -4,6 +4,7 @@
   import type { Leafer, Group } from 'leafer-ui';
   import { Pen } from 'leafer-ui';
   import { useIdleCallback } from '../utils/useIdleCallback';
+  import { useLogControl } from '../composables/useLogControl';
 
   /** 性能数据接口 */
   interface PerformanceData {
@@ -33,6 +34,9 @@
     mainGroup: null,
   });
 
+  /** 日志控制对象 */
+  const logEnable = useLogControl();
+
   /** 性能数据 */
   const performanceData = ref<PerformanceData>({
     totalElements: 0,
@@ -50,7 +54,7 @@
    */
   const updatePerformanceData = useThrottleFn(() => {
     if (!props.leaferInstance || !props.mainGroup) {
-      console.warn('[性能监控] 实例未准备好，跳过更新');
+      logEnable.performanceMonitor && console.warn('[性能监控] 实例未准备好，跳过更新');
       return;
     }
 
@@ -68,7 +72,7 @@
       (child): child is Pen => child instanceof Pen
     ).length ?? 0;
 
-    console.log('[性能监控] 性能数据更新:', {
+    logEnable.performanceMonitor && console.log('[性能监控] 性能数据更新:', {
       totalElements,
       pathCount,
       mainGroupChildren: props.mainGroup.children?.length,
@@ -109,7 +113,7 @@
    * 启动性能监控
    */
   function startPerformanceMonitor() {
-    console.log('[性能监控] 启动性能监控');
+    logEnable.performanceMonitor && console.log('[性能监控] 启动性能监控');
 
     // 重置 FPS 相关
     frameCount.value = 0;
@@ -126,7 +130,7 @@
    * 停止性能监控
    */
   function stopPerformanceMonitor() {
-    console.log('[性能监控] 停止性能监控');
+    logEnable.performanceMonitor && console.log('[性能监控] 停止性能监控');
     pauseRaf();
     pauseIdleCallback();
   }
@@ -137,7 +141,7 @@
   watch(
     () => props.enabled,
     (newValue) => {
-      console.log('[性能监控] enabled 状态变化:', newValue);
+      logEnable.performanceMonitor && console.log('[性能监控] enabled 状态变化:', newValue);
       if (newValue) {
         startPerformanceMonitor();
       } else {
@@ -154,7 +158,7 @@
   watch(
     [() => props.leaferInstance, () => props.mainGroup],
     ([newLeafer, newMainGroup]) => {
-      console.log('[性能监控] 实例变化:', {
+      logEnable.performanceMonitor && console.log('[性能监控] 实例变化:', {
         leaferInstance: !!newLeafer,
         mainGroup: !!newMainGroup,
         enabled: props.enabled,
