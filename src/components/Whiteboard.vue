@@ -17,6 +17,7 @@
       type: 'path',
       size: 20,
     },
+    touchEnabled: true, // 默认启用触摸输入
   });
 
   /** Leafer实例 */
@@ -27,12 +28,16 @@
   const canvasRef = ref<HTMLDivElement | null>(null);
 
   /** 绘图状态 */
-  let isDrawing = false;
-  let lastX = 0;
-  let lastY = 0;
-  let isEraserActive = false;
-  /** 当前正在绘制的路径（一次连续绘制只创建一个 Pen） */
-  let currentPath: Pen | null = null;
+  /** 每个指针的绘制状态 Map<pointerId, DrawingState> */
+  const drawingStates = new Map<
+    number,
+    {
+      path: Pen;
+      isEraser: boolean;
+    }
+  >();
+  /** 是否正在使用压感笔（用于自动禁用触摸） */
+  const isUsingPen = ref(false);
 
   /**
    * 获取笔刷大小（基于压感）
@@ -49,11 +54,18 @@
   function updateCursor() {
     if (!canvasRef.value) return;
 
-    if (isEraserActive || toolConfig.value.toolType === 'eraser') {
+    if (toolConfig.value.toolType === 'eraser') {
       canvasRef.value.style.cursor = 'cell'; // 橡皮擦光标
     } else {
       canvasRef.value.style.cursor = 'crosshair'; // 画笔光标
     }
+  }
+
+  /**
+   * 切换触摸输入是否启用
+   */
+  function setTouchEnabled(enabled: boolean) {
+    toolConfig.value.touchEnabled = enabled;
   }
 
   /**
@@ -90,67 +102,92 @@
   }
 
   /**
-   * 原生 pointerdown 事件处理
+   * 原生 pointerdown 事件处理（支持多点触控）
    */
   function handlePointerDown(e: PointerEvent) {
     if (!canvasRef.value || !mainGroup) return;
+
+    // 如果是触摸输入且触摸被禁用，则忽略
+    if (e.pointerType === 'touch' && !toolConfig.value.touchEnabled) {
+      return;
+    }
+
+    // 如果是压感笔，自动禁用触摸输入（防止手掌误触）
+    if (e.pointerType === 'pen' && !isUsingPen.value) {
+      isUsingPen.value = true;
+      toolConfig.value.touchEnabled = false;
+    }
 
     // 检测压感笔橡皮擦端
     const isPenEraser = e.pointerType === 'pen' && e.buttons === 32;
 
     // 确定是否使用橡皮擦
+    let isEraser = isPenEraser;
     if (isPenEraser) {
-      isEraserActive = true;
       toolConfig.value.toolType = 'eraser' as ToolType;
+      isEraser = true;
     } else {
-      isEraserActive = toolConfig.value.toolType === 'eraser';
+      isEraser = toolConfig.value.toolType === 'eraser';
     }
 
-    isDrawing = true;
-
     const rect = canvasRef.value.getBoundingClientRect();
-    lastX = e.clientX - rect.left;
-    lastY = e.clientY - rect.top;
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
     const pressure = e.pressure || 0.5;
 
     // 捕获指针，防止压感笔事件被中断（解决绘制一小段就停顿的问题）
     canvasRef.value.setPointerCapture(e.pointerId);
 
     // 创建新路径（一次连续绘制只创建一个 Pen）
-    currentPath = startPath(lastX, lastY, pressure, isEraserActive);
+    const path = startPath(x, y, pressure, isEraser);
+    if (!path) return;
+
+    // 存储该指针的绘制状态
+    drawingStates.set(e.pointerId, {
+      path,
+      isEraser,
+    });
 
     // 更新光标
     updateCursor();
   }
 
   /**
-   * 原生 pointermove 事件处理
+   * 原生 pointermove 事件处理（支持多点触控）
    */
   function handlePointerMove(e: PointerEvent) {
-    if (!isDrawing || !canvasRef.value || !currentPath) return;
+    // 如果是触摸输入且触摸被禁用，则忽略
+    if (e.pointerType === 'touch' && !toolConfig.value.touchEnabled) {
+      return;
+    }
+
+    const drawingState = drawingStates.get(e.pointerId);
+    if (!drawingState || !canvasRef.value) return;
 
     const rect = canvasRef.value.getBoundingClientRect();
     const x = e.clientX - rect.left;
     const y = e.clientY - rect.top;
 
-    // 向当前路径添加新点
-    currentPath.lineTo(x, y);
-
-    // 更新最后位置
-    lastX = x;
-    lastY = y;
+    // 向该指针的路径添加新点
+    drawingState.path.lineTo(x, y);
   }
 
   /**
-   * 原生 pointerup 事件处理
+   * 原生 pointerup 事件处理（支持多点触控）
    */
   function handlePointerUp(e: PointerEvent) {
     // 释放指针捕获
     canvasRef.value?.releasePointerCapture(e.pointerId);
 
-    isDrawing = false;
-    currentPath = null;
-    isEraserActive = false;
+    // 移除该指针的绘制状态
+    drawingStates.delete(e.pointerId);
+
+    // 如果所有指针都已释放，检查是否是压感笔操作结束
+    if (drawingStates.size === 0 && isUsingPen.value) {
+      isUsingPen.value = false;
+      // 压感笔操作结束后，恢复触摸输入（如果用户没有手动关闭）
+      // 这里保持当前状态，让用户手动控制
+    }
   }
 
   /**
@@ -160,10 +197,13 @@
     // 释放指针捕获
     canvasRef.value?.releasePointerCapture(e.pointerId);
 
-    // 停止绘制
-    isDrawing = false;
-    currentPath = null;
-    isEraserActive = false;
+    // 移除该指针的绘制状态
+    drawingStates.delete(e.pointerId);
+
+    // 如果所有指针都已释放，检查是否是压感笔操作结束
+    if (drawingStates.size === 0 && isUsingPen.value) {
+      isUsingPen.value = false;
+    }
   }
 
   /**
@@ -282,6 +322,7 @@
     setBrushColor,
     setBrushSize,
     setEraserSize,
+    setTouchEnabled,
     clearCanvas,
   });
 </script>
@@ -304,7 +345,19 @@
       >
         橡皮擦
       </button>
+      <button
+        :class="['tool-btn', { active: toolConfig.touchEnabled }]"
+        @click="setTouchEnabled(!toolConfig.touchEnabled)"
+        :title="isUsingPen ? '使用压感笔中，触摸已自动禁用' : '切换触摸输入'"
+      >
+        触摸: {{ toolConfig.touchEnabled ? '开' : '关' }}
+      </button>
       <button class="tool-btn" @click="clearCanvas">清空</button>
+    </div>
+
+    <!-- 压感笔提示 -->
+    <div v-if="isUsingPen" class="pen-indicator">
+      压感笔模式 - 触摸已禁用
     </div>
   </div>
 </template>
@@ -357,5 +410,17 @@
     background-color: #1890ff;
     color: white;
     border-color: #1890ff;
+  }
+
+  .pen-indicator {
+    position: absolute;
+    bottom: 20px;
+    left: 20px;
+    padding: 8px 12px;
+    background-color: rgba(24, 144, 255, 0.9);
+    color: white;
+    border-radius: 4px;
+    font-size: 12px;
+    pointer-events: none;
   }
 </style>
