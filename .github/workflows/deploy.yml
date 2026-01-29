@@ -1,0 +1,79 @@
+# GitHub Actions 工作流配置
+# 用于自动构建和部署项目到 GitHub Pages
+# 当推送到 main 分支时自动触发部署流程
+
+name: Deploy to GitHub Pages
+
+on:
+  # 触发条件：当推送到 main 分支时
+  push:
+    branches: [main]
+
+  # 允许手动触发部署
+  workflow_dispatch:
+
+# 设置 GitHub Pages 部署所需权限
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# 防止并发部署，确保只进行一次部署
+concurrency:
+  group: "pages"
+  cancel-in-progress: false
+
+jobs:
+  # 构建任务
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      # 检出代码
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # 设置 Node.js 环境
+      # 使用 pnpm 作为包管理器，需要指定 node-version
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      # 安装 pnpm 包管理器
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      # 安装依赖并构建项目
+      # 使用 pnpm install --frozen-lockfile 确保依赖版本一致性
+      - name: Install dependencies and build
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm build
+
+      # 上传构建产物到 GitHub Pages
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          # 构建产物目录
+          path: './dist'
+
+  # 部署任务
+  deploy:
+    # 依赖于构建任务，需要在构建成功后执行
+    needs: build
+
+    # 设置部署环境
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+
+    runs-on: ubuntu-latest
+
+    steps:
+      # 部署到 GitHub Pages
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
