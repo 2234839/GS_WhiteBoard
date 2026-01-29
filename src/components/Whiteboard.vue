@@ -30,6 +30,8 @@
   let lastX = 0;
   let lastY = 0;
   let isEraserActive = false;
+  /** 当前正在绘制的路径（一次连续绘制只创建一个 Pen） */
+  let currentPath: Pen | null = null;
 
   /**
    * 获取笔刷大小（基于压感）
@@ -54,83 +56,43 @@
   }
 
   /**
-   * 绘制点
+   * 开始绘制（创建新的路径）
    */
-  function drawPoint(x: number, y: number, pressure: number, isEraser: boolean) {
-    if (!mainGroup) return;
+  function startPath(x: number, y: number, pressure: number, isEraser: boolean) {
+    if (!mainGroup) return null;
     const { brush, eraser } = toolConfig.value;
     const brushSize =
       isEraser ? eraser.size : getBrushSize(pressure, brush.baseLineWidth, brush.pressureEnabled);
 
+    // 创建路径
+    const path = new Pen();
+    path.setStyle({
+      stroke: isEraser ? 'rgba(0,0,0,1)' : brush.color,
+      strokeWidth: brushSize,
+      strokeCap: 'round',
+      strokeJoin: 'round',
+    });
+
     if (isEraser) {
-      // 橡皮擦：创建 Pen 元素，设置 eraser: true
-      const eraserPath = new Pen();
-      eraserPath.setStyle({
-        stroke: 'rgba(0,0,0,1)',
-        strokeWidth: brushSize,
-        strokeCap: 'round',
-        strokeJoin: 'round',
-      });
-      eraserPath.eraser = true;
-      eraserPath.moveTo(x, y);
-      eraserPath.lineTo(x, y);
-      mainGroup.add(eraserPath);
-    } else {
-      // 绘制：创建圆点
-      const dot = new Rect({
-        x: x - brushSize / 2,
-        y: y - brushSize / 2,
-        width: brushSize,
-        height: brushSize,
-        fill: brush.color,
-        cornerRadius: brushSize / 2,
-      });
-      mainGroup.add(dot);
+      // 使用 pixel 类型橡皮擦，效果更自然平滑
+      path.eraser = 'pixel';
     }
+
+    // 移动到起始点
+    path.moveTo(x, y);
+    path.lineTo(x, y); // 绘制一个点
+
+    // 添加到 mainGroup
+    mainGroup.add(path);
+
+    return path;
   }
 
   /**
-   * 绘制线段
+   * 继续绘制（向当前路径添加点）
    */
-  function drawLine(
-    x1: number,
-    y1: number,
-    x2: number,
-    y2: number,
-    pressure: number,
-    isEraser: boolean,
-  ) {
-    if (!mainGroup) return;
-    const { brush, eraser } = toolConfig.value;
-    const brushSize =
-      isEraser ? eraser.size : getBrushSize(pressure, brush.baseLineWidth, brush.pressureEnabled);
-
-    if (isEraser) {
-      // 橡皮擦：创建 Pen 元素，设置 eraser: true
-      const eraserPath = new Pen();
-      eraserPath.setStyle({
-        stroke: 'rgba(0,0,0,1)',
-        strokeWidth: brushSize,
-        strokeCap: 'round',
-        strokeJoin: 'round',
-      });
-      eraserPath.eraser = true;
-      eraserPath.moveTo(x1, y1);
-      eraserPath.lineTo(x2, y2);
-      mainGroup.add(eraserPath);
-    } else {
-      // 绘制：创建线条
-      const line = new Pen();
-      line.setStyle({
-        stroke: brush.color,
-        strokeWidth: brushSize,
-        strokeCap: 'round',
-        strokeJoin: 'round',
-      });
-      line.moveTo(x1, y1);
-      line.lineTo(x2, y2);
-      mainGroup.add(line);
-    }
+  function continuePath(path: Pen, x: number, y: number) {
+    path.lineTo(x, y);
   }
 
   /**
@@ -157,8 +119,8 @@
     lastY = e.clientY - rect.top;
     const pressure = e.pressure || 0.5;
 
-    // 绘制起始点
-    drawPoint(lastX, lastY, pressure, isEraserActive);
+    // 创建新路径（一次连续绘制只创建一个 Pen）
+    currentPath = startPath(lastX, lastY, pressure, isEraserActive);
 
     // 更新光标
     updateCursor();
@@ -168,15 +130,14 @@
    * 原生 pointermove 事件处理
    */
   function handlePointerMove(e: PointerEvent) {
-    if (!isDrawing || !canvasRef.value) return;
+    if (!isDrawing || !canvasRef.value || !currentPath) return;
 
     const rect = canvasRef.value.getBoundingClientRect();
     const x = e.clientX - rect.left;
     const y = e.clientY - rect.top;
-    const pressure = e.pressure || 0.5;
 
-    // 绘制线段
-    drawLine(lastX, lastY, x, y, pressure, isEraserActive);
+    // 向当前路径添加新点
+    continuePath(currentPath, x, y);
 
     // 更新最后位置
     lastX = x;
@@ -188,6 +149,7 @@
    */
   function handlePointerUp() {
     isDrawing = false;
+    currentPath = null;
     isEraserActive = false;
   }
 
@@ -197,6 +159,7 @@
   function handlePointerLeave() {
     if (isDrawing) {
       isDrawing = false;
+      currentPath = null;
       isEraserActive = false;
     }
   }
@@ -270,7 +233,7 @@
       strokeWidth: 30,
       strokeCap: 'round',
     });
-    eraser1.eraser = true;
+    eraser1.eraser = 'pixel';
     eraser1.moveTo(150, 80);
     eraser1.lineTo(150, 170);
     mainGroup.add(eraser1);
