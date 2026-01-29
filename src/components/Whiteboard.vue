@@ -16,6 +16,7 @@
     AdaptiveSmoothingState,
   } from '@/utils/pressureSmoothing';
   import { useCanvasGestures } from '@/composables/useCanvasGestures';
+  import { useHistoryManager } from '@/composables/useHistoryManager';
   import PerformanceMonitor from './PerformanceMonitor.vue';
   import Toolbar from './Toolbar.vue';
   import CustomCursor from './CustomCursor.vue';
@@ -131,6 +132,11 @@
     handleTouchEnd,
     touchStartCanvasState,
   } = useCanvasGestures(canvasRef, leaferInstance, toolConfig);
+
+  /**
+   * 使用历史记录管理 composable
+   */
+  const { canUndo, canRedo, pushState, undo, redo } = useHistoryManager();
 
   /**
    * 监听画布变换状态变化并保存到 canvasData
@@ -451,6 +457,11 @@
     if (drawingStates.size === 0 && !isUsingPen.value && props.canvasData && leaferInstance.value) {
       saveCanvasData();
     }
+
+    // 如果所有指针都已释放，保存历史记录状态
+    if (drawingStates.size === 0) {
+      pushState(mainGroup.value);
+    }
   }
 
   /**
@@ -604,6 +615,9 @@
    */
   function clearCanvas() {
     if (mainGroup.value) {
+      // 保存清空前的状态到历史记录
+      pushState(mainGroup.value);
+
       // LeaferJS 的正确清空方式：遍历删除所有子元素
       const children = [...mainGroup.value.children];
       for (const child of children) {
@@ -613,6 +627,48 @@
       // 如果有画布数据，同时清空保存的数据
       if (props.canvasData) {
         saveCanvasData();
+      }
+    }
+  }
+
+  /**
+   * 撤回操作
+   */
+  function handleUndo() {
+    undo(mainGroup.value);
+    // 撤回后保存画布数据
+    if (props.canvasData) {
+      saveCanvasData();
+    }
+  }
+
+  /**
+   * 重做操作
+   */
+  function handleRedo() {
+    redo(mainGroup.value);
+    // 重做后保存画布数据
+    if (props.canvasData) {
+      saveCanvasData();
+    }
+  }
+
+  /**
+   * 处理键盘快捷键
+   */
+  function handleKeyDown(e: KeyboardEvent) {
+    // Ctrl+Z 撤回
+    if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey) {
+      e.preventDefault();
+      if (canUndo.value) {
+        handleUndo();
+      }
+    }
+    // Ctrl+Y 或 Ctrl+Shift+Z 重做
+    if ((e.ctrlKey || e.metaKey) && (e.key === 'y' || (e.key === 'z' && e.shiftKey))) {
+      e.preventDefault();
+      if (canRedo.value) {
+        handleRedo();
       }
     }
   }
@@ -629,6 +685,9 @@
       // 监听 pointercancel 事件（压感笔可能触发此事件导致绘制中断）
       canvasRef.value.addEventListener('pointercancel', handlePointerCancel);
     }
+
+    // 添加键盘事件监听
+    window.addEventListener('keydown', handleKeyDown);
   });
 
   // 组件卸载时清理
@@ -639,6 +698,9 @@
       canvasRef.value.removeEventListener('pointerup', handlePointerUp);
       canvasRef.value.removeEventListener('pointercancel', handlePointerCancel);
     }
+
+    // 移除键盘事件监听
+    window.removeEventListener('keydown', handleKeyDown);
 
     if (leaferInstance.value) {
       leaferInstance.value.destroy();
@@ -653,6 +715,10 @@
     setEraserSize,
     setTouchDrawingEnabled,
     clearCanvas,
+    handleUndo,
+    handleRedo,
+    canUndo,
+    canRedo,
   });
 </script>
 
@@ -669,8 +735,12 @@
       v-model:performanceMonitorEnabled="performanceMonitorEnabled"
       :temporaryToolSwitch="temporaryToolSwitch"
       :show-back-button="showBackButton"
+      :can-undo="canUndo"
+      :can-redo="canRedo"
       @clearCanvas="clearCanvas"
       @back="emit('back')"
+      @undo="handleUndo"
+      @redo="handleRedo"
     />
 
     <!-- 压感笔提示 -->

@@ -12,6 +12,8 @@
   interface Emits {
     (e: 'clearCanvas'): void;
     (e: 'back'): void;
+    (e: 'undo'): void;
+    (e: 'redo'): void;
   }
 
   const emit = defineEmits<Emits>();
@@ -24,11 +26,17 @@
     temporaryToolSwitch?: 'pen' | 'eraser' | null;
     /** 是否显示返回按钮 */
     showBackButton?: boolean;
+    /** 是否可以撤回 */
+    canUndo?: boolean;
+    /** 是否可以重做 */
+    canRedo?: boolean;
   }
 
   const props = withDefaults(defineProps<Props>(), {
     temporaryToolSwitch: null,
     showBackButton: false,
+    canUndo: false,
+    canRedo: false,
   });
 
   /**
@@ -115,6 +123,25 @@
         @click="setToolType(ToolType.PEN)"
       >
         画笔
+      </button>
+
+      <!-- 撤回/重做按钮 -->
+      <div class="toolbar-divider"></div>
+      <button
+        :class="['tool-btn', { disabled: !canUndo }]"
+        @click="canUndo && emit('undo')"
+        :disabled="!canUndo"
+        title="撤回 (Ctrl+Z)"
+      >
+        ↶ 撤回
+      </button>
+      <button
+        :class="['tool-btn', { disabled: !canRedo }]"
+        @click="canRedo && emit('redo')"
+        :disabled="!canRedo"
+        title="重做 (Ctrl+Y)"
+      >
+        重做 ↷
       </button>
       <button
         :class="['tool-btn', {
@@ -264,6 +291,16 @@
     color: white;
     border-color: #52c41a;
     box-shadow: 0 0 8px rgba(82, 196, 26, 0.6);
+  }
+
+  .tool-btn.disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+    background-color: #f5f5f5;
+  }
+
+  .tool-btn.disabled:hover {
+    background-color: #f5f5f5;
   }
 
   .arrow-icon {
