@@ -128,6 +128,9 @@
     // 启动 FPS 计算
     animationFrameId = requestAnimationFrame(updateFPS);
 
+    // 立即更新一次性能数据，确保开启时能立即显示
+    updatePerformanceData();
+
     // 启动性能数据更新（在主线程空闲时）
     schedulePerformanceUpdate();
   }
@@ -152,6 +155,19 @@
         startPerformanceMonitor();
       } else {
         stopPerformanceMonitor();
+      }
+    }
+  );
+
+  /**
+   * 监听 leaferInstance 和 mainGroup 的变化
+   * 当实例准备好时，立即更新性能数据
+   */
+  watch(
+    [() => props.leaferInstance, () => props.mainGroup],
+    () => {
+      if (props.enabled && props.leaferInstance && props.mainGroup) {
+        updatePerformanceData();
       }
     }
   );
