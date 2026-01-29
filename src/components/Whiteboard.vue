@@ -34,10 +34,15 @@
     {
       path: Pen;
       isEraser: boolean;
+      lastPressure: number; // 上一次的压力值
+      lastX: number; // 上一次的X坐标
+      lastY: number; // 上一次的Y坐标
     }
   >();
   /** 是否正在使用压感笔（用于自动禁用触摸） */
   const isUsingPen = ref(false);
+  /** 压力变化阈值，超过此值时创建新的路径段 */
+  const PRESSURE_THRESHOLD = 0.05;
 
   /**
    * 获取笔刷大小（基于压感）
@@ -146,6 +151,9 @@
     drawingStates.set(e.pointerId, {
       path,
       isEraser,
+      lastPressure: pressure,
+      lastX: x,
+      lastY: y,
     });
 
     // 更新光标
@@ -153,7 +161,7 @@
   }
 
   /**
-   * 原生 pointermove 事件处理（支持多点触控）
+   * 原生 pointermove 事件处理（支持多点触控 + 动态压感）
    */
   function handlePointerMove(e: PointerEvent) {
     // 如果是触摸输入且触摸被禁用，则忽略
@@ -167,9 +175,32 @@
     const rect = canvasRef.value.getBoundingClientRect();
     const x = e.clientX - rect.left;
     const y = e.clientY - rect.top;
+    const pressure = e.pressure || 0.5;
 
-    // 向该指针的路径添加新点
-    drawingState.path.lineTo(x, y);
+    // 检查压力是否显著变化
+    const pressureChanged =
+      Math.abs(pressure - drawingState.lastPressure) > PRESSURE_THRESHOLD;
+
+    if (pressureChanged && !drawingState.isEraser) {
+      // 压力变化显著，结束当前路径，创建新的路径段
+      // 创建新路径，起点为上一个点（保持连续性）
+      const newPath = startPath(drawingState.lastX, drawingState.lastY, pressure, false);
+      if (newPath) {
+        // 添加新点
+        newPath.lineTo(x, y);
+
+        // 更新绘制状态
+        drawingState.path = newPath;
+        drawingState.lastPressure = pressure;
+      }
+    } else {
+      // 压力变化不大，继续使用当前路径
+      drawingState.path.lineTo(x, y);
+    }
+
+    // 更新坐标
+    drawingState.lastX = x;
+    drawingState.lastY = y;
   }
 
   /**
