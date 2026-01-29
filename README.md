@@ -78,6 +78,14 @@ pnpm run preview
 
 你也可以在 GitHub 仓库的 **Actions** 页面手动触发部署工作流。
 
+### 路由模式
+
+项目使用 **Hash 模式**（`createWebHashHistory`）以支持 GitHub Pages 部署。
+
+GitHub Pages 不支持 Vue Router 的 History 模式，因此使用 Hash 模式：
+- URL 格式：`https://你的用户名.github.io/GS_WhiteBoard/#/canvases`
+- 优点：刷新页面不会 404，路由稳定可靠
+
 ## 项目结构
 
 ```
