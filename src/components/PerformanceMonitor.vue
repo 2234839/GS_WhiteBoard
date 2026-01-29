@@ -1,5 +1,5 @@
 <script setup lang="ts">
-  import { ref, onMounted, onUnmounted, watch } from 'vue';
+  import { ref, onUnmounted, watch } from 'vue';
   import { useRafFn } from '@vueuse/core';
   import type { Leafer, Group } from 'leafer-ui';
   import { Pen } from 'leafer-ui';
@@ -177,13 +177,6 @@
     },
     { immediate: true } // 立即执行一次
   );
-
-  // 组件挂载时启动监控
-  onMounted(() => {
-    if (props.enabled) {
-      startPerformanceMonitor();
-    }
-  });
 
   // 组件卸载时清理
   onUnmounted(() => {
