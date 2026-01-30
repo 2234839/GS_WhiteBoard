@@ -17,9 +17,15 @@
   } from '@/utils/pressureSmoothing';
   import { useCanvasGestures } from '@/composables/useCanvasGestures';
   import { pushState, undo, redo } from '@/utils/historyUtils';
+  import { useLogControl } from '@/composables/useLogControl';
   import PerformanceMonitor from './PerformanceMonitor.vue';
   import Toolbar from './Toolbar.vue';
   import CustomCursor from './CustomCursor.vue';
+
+  /**
+   * 日志控制
+   */
+  const logEnable = useLogControl();
 
   /**
    * 组件 Props
@@ -93,6 +99,11 @@
    */
   const performanceMonitorEnabled = useStorage('whiteboard-performance-monitor', false, localStorage);
 
+  /**
+   * 撤销重做功能开关（持久化，用于性能测试对比）
+   */
+  const undoRedoEnabled = useStorage('whiteboard-undo-redo-enabled', true, localStorage);
+
   /** Leafer实例（使用 shallowRef 避免深度响应式影响性能） */
   const leaferInstance = shallowRef<Leafer | null>(null);
   /** 主容器Group（使用 shallowRef 避免深度响应式影响性能） */
@@ -121,6 +132,45 @@
   const isUsingPen = ref(false);
   /** 压感笔临时切换状态（null表示未临时切换） */
   const temporaryToolSwitch = ref<'pen' | 'eraser' | null>(null);
+
+  /**
+   * 批处理历史记录保存（防抖）
+   * 只有在用户停止绘制一段时间后才保存状态
+   */
+  let historySaveTimer: ReturnType<typeof setTimeout> | null = null;
+  const HISTORY_SAVE_DELAY = 500; // 延迟 500ms 保存
+
+  /**
+   * 保存历史记录状态（带防抖）
+   */
+  function saveHistoryState() {
+    logEnable.undoRedo && console.log('[撤销重做] saveHistoryState 调用');
+
+    // 如果撤销功能关闭，不进行任何序列化操作
+    if (!undoRedoEnabled.value) {
+      logEnable.undoRedo && console.log('[撤销重做] 撤销功能已关闭，跳过保存');
+      return;
+    }
+    if (!mainGroup.value || !props.canvasData) return;
+
+    // 清除之前的定时器
+    if (historySaveTimer) {
+      clearTimeout(historySaveTimer);
+      logEnable.undoRedo && console.log('[撤销重做] 清除之前的定时器，重新计时');
+    }
+
+    // 延迟保存，等待用户停止绘制
+    historySaveTimer = setTimeout(() => {
+      if (!mainGroup.value || !props.canvasData) return;
+
+      // 同时保存历史记录和画布数据
+      saveCanvasData();
+      logEnable.undoRedo && console.log('[撤销重做] 批处理保存历史记录');
+      pushState(mainGroup.value, props.canvasData.undoStack, props.canvasData.redoStack, props.canvasData.maxHistory);
+
+      historySaveTimer = null;
+    }, HISTORY_SAVE_DELAY);
+  }
 
   /**
    * 使用画布手势 composable
@@ -202,10 +252,13 @@
    * 开始绘制（创建新的路径）
    */
   function startPath(x: number, y: number, pressure: number, isEraser: boolean) {
+    const t0 = performance.now();
     if (!mainGroup.value) return null;
     const { brush, eraser } = toolConfig.value;
     const brushSize =
       isEraser ? eraser.size : getBrushSize(pressure, brush.baseLineWidth, brush.pressureEnabled);
+
+    const t1 = performance.now();
 
     // 创建路径
     const path = new Pen();
@@ -216,6 +269,8 @@
       strokeJoin: 'round',
     });
 
+    const t2 = performance.now();
+
     if (isEraser) {
       // 使用 pixel 类型橡皮擦，效果更自然平滑
       path.eraser = 'pixel';
@@ -225,8 +280,13 @@
     path.moveTo(x, y);
     path.lineTo(x, y); // 绘制一个点
 
+    const t3 = performance.now();
+
     // 添加到 mainGroup
     mainGroup.value.add(path);
+
+    const t4 = performance.now();
+    logEnable.undoRedo && console.log(`[性能] startPath: 计算大小${(t1-t0).toFixed(2)}ms, 创建Pen${(t2-t1).toFixed(2)}ms, 设置样式${(t2-t1).toFixed(2)}ms, moveTo${(t3-t2).toFixed(2)}ms, add到Group${(t4-t3).toFixed(2)}ms, 总计${(t4-t0).toFixed(2)}ms`);
 
     return path;
   }
@@ -235,6 +295,7 @@
    * 原生 pointerdown 事件处理（支持多点触控）
    */
   function handlePointerDown(e: PointerEvent) {
+    const t0 = performance.now();
     if (!canvasRef.value || !mainGroup) return;
 
     // 处理触控手势（在触摸绘制关闭时）
@@ -245,13 +306,20 @@
       return;
     }
 
+    const t1 = performance.now();
+    logEnable.undoRedo && console.log(`[性能] handleTouchStart: ${(t1 - t0).toFixed(2)}ms`);
+
     // 如果是压感笔，自动禁用触摸输入（防止手掌误触）
     if (e.pointerType === 'pen' && !isUsingPen.value) {
       isUsingPen.value = true;
-      toolConfig.value = {
-        ...toolConfig.value,
-        touchDrawingEnabled: false,
-      };
+
+      // 只在触摸绘制开启时才修改（避免不必要的响应式更新）
+      if (toolConfig.value.touchDrawingEnabled) {
+        toolConfig.value = {
+          ...toolConfig.value,
+          touchDrawingEnabled: false,
+        };
+      }
 
       // 检测压感笔橡皮擦端（buttons === 32 表示橡皮擦端）
       const isPenEraser = e.buttons === 32;
@@ -266,6 +334,9 @@
       }
     }
 
+    const t2 = performance.now();
+    logEnable.undoRedo && console.log(`[性能] 压感笔处理: ${(t2 - t1).toFixed(2)}ms`);
+
     // 确定是否使用橡皮擦（如果有临时切换状态则完全使用临时状态，否则使用配置状态）
     let isEraser = temporaryToolSwitch.value
       ? temporaryToolSwitch.value === 'eraser'
@@ -277,12 +348,21 @@
     const y = coords.y;
     const pressure = e.pressure || 0.5;
 
+    const t3 = performance.now();
+    logEnable.undoRedo && console.log(`[性能] 坐标转换: ${(t3 - t2).toFixed(2)}ms`);
+
     // 捕获指针，防止压感笔事件被中断（解决绘制一小段就停顿的问题）
     canvasRef.value.setPointerCapture(e.pointerId);
+
+    const t4 = performance.now();
+    logEnable.undoRedo && console.log(`[性能] setPointerCapture: ${(t4 - t3).toFixed(2)}ms`);
 
     // 创建新路径（一次连续绘制只创建一个 Pen）
     const path = startPath(x, y, pressure, isEraser);
     if (!path) return;
+
+    const t5 = performance.now();
+    logEnable.undoRedo && console.log(`[性能] startPath: ${(t5 - t4).toFixed(2)}ms`);
 
     // 存储该指针的绘制状态
     drawingStates.set(e.pointerId, {
@@ -298,6 +378,8 @@
       adaptiveSmoothingState: initAdaptiveSmoothingState(5),
     });
 
+    const t6 = performance.now();
+    logEnable.undoRedo && console.log(`[性能] 存储 state: ${(t6 - t5).toFixed(2)}ms, 总计: ${(t6 - t0).toFixed(2)}ms`);
   }
 
   /**
@@ -452,22 +534,11 @@
       isUsingPen.value = false;
       // 清除临时切换状态
       temporaryToolSwitch.value = null;
-      // 压感笔操作结束后，保存画布数据
-      if (props.canvasData && leaferInstance.value) {
-        saveCanvasData();
-      }
     }
 
-    // 如果没有使用压感笔，也保存画布数据
-    if (drawingStates.size === 0 && !isUsingPen.value && props.canvasData && leaferInstance.value) {
-      saveCanvasData();
-    }
-
-    // 如果所有指针都已释放，保存历史记录状态
+    // 如果所有指针都已释放，使用批处理保存历史记录
     if (drawingStates.size === 0) {
-      if (mainGroup.value && props.canvasData) {
-        pushState(mainGroup.value, props.canvasData.undoStack, props.canvasData.redoStack, props.canvasData.maxHistory);
-      }
+      saveHistoryState();
     }
   }
 
@@ -550,11 +621,15 @@
   function saveCanvasData() {
     if (!props.canvasData || !mainGroup.value) return;
 
-    // 导出 mainGroup 的子元素数据
-    const children = mainGroup.value.children;
-    const elementsData = children.map(child => child.toJSON());
-    props.canvasData.leaferData = elementsData;
+    const startTime = performance.now();
+
+    // 直接序列化整个 group
+    const groupJson = mainGroup.value.toJSON() as { children?: Record<string, unknown>[] };
+    props.canvasData.leaferData = groupJson.children || [];
     props.canvasData.updatedAt = Date.now();
+
+    const serializeTime = performance.now() - startTime;
+    logEnable.undoRedo && console.log(`[撤销重做] saveCanvasData: 序列化耗时 ${serializeTime.toFixed(2)}ms`);
   }
 
   /**
@@ -610,19 +685,27 @@
    * 清空画布
    */
   function clearCanvas() {
-    if (mainGroup.value && props.canvasData) {
-      // 保存清空前的状态到历史记录
-      pushState(mainGroup.value, props.canvasData.undoStack, props.canvasData.redoStack, props.canvasData.maxHistory);
+    if (!mainGroup.value || !props.canvasData) return;
 
-      // LeaferJS 的正确清空方式：遍历删除所有子元素
-      const children = [...mainGroup.value.children];
-      for (const child of children) {
-        mainGroup.value.remove(child);
-      }
-
-      // 保存画布数据
-      saveCanvasData();
+    // 清空防抖定时器，清空操作应该立即保存
+    if (historySaveTimer) {
+      clearTimeout(historySaveTimer);
+      historySaveTimer = null;
     }
+
+    // 保存清空前的状态到历史记录（根据开关决定是否启用）
+    if (undoRedoEnabled.value) {
+      pushState(mainGroup.value, props.canvasData.undoStack, props.canvasData.redoStack, props.canvasData.maxHistory);
+    }
+
+    // LeaferJS 的正确清空方式：遍历删除所有子元素
+    const children = [...mainGroup.value.children];
+    for (const child of children) {
+      mainGroup.value.remove(child);
+    }
+
+    // 保存画布数据
+    saveCanvasData();
   }
 
   /**
@@ -686,6 +769,16 @@
 
   // 组件卸载时清理
   onUnmounted(() => {
+    // 清理防抖定时器
+    if (historySaveTimer) {
+      clearTimeout(historySaveTimer);
+      historySaveTimer = null;
+      // 如果撤销功能开启，组件卸载前立即保存数据
+      if (undoRedoEnabled.value) {
+        saveCanvasData();
+      }
+    }
+
     if (canvasRef.value) {
       canvasRef.value.removeEventListener('pointerdown', handlePointerDown);
       canvasRef.value.removeEventListener('pointermove', handlePointerMove);
@@ -727,6 +820,7 @@
     <Toolbar
       v-model:toolConfig="toolConfig"
       v-model:performanceMonitorEnabled="performanceMonitorEnabled"
+      v-model:undoRedoEnabled="undoRedoEnabled"
       :temporaryToolSwitch="temporaryToolSwitch"
       :show-back-button="showBackButton"
       :can-undo="canUndo"

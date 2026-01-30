@@ -53,6 +53,14 @@
     default: false,
   });
 
+  /**
+   * 使用 defineModel 定义双向绑定的撤销重做开关
+   * 父组件传入持久化的 undoRedoEnabled，自动实现双向绑定
+   */
+  const undoRedoEnabled = defineModel<boolean>('undoRedoEnabled', {
+    default: true,
+  });
+
   /** 日志控制对象 */
   const logEnable = useLogControl();
 
@@ -199,6 +207,13 @@
         title="切换性能分析"
       >
         性能
+      </button>
+      <button
+        :class="['tool-btn', { active: undoRedoEnabled }]"
+        @click="undoRedoEnabled = !undoRedoEnabled"
+        title="切换撤销重做功能（关闭后绘制更流畅，但无法撤销）"
+      >
+        撤销: {{ undoRedoEnabled ? '开' : '关' }}
       </button>
       <button
         :class="['tool-btn', { active: logPanelExpanded }]"

@@ -38,6 +38,11 @@ export const LOG_CATEGORIES = {
     description: '记录测试数据相关信息',
     defaultEnabled: false,
   },
+  undoRedo: {
+    label: '撤销重做性能日志',
+    description: '记录撤销重做相关的性能数据',
+    defaultEnabled: true,
+  },
 } satisfies Record<string, LogCategoryMeta>;
 
 /**
