@@ -1,4 +1,4 @@
-import { ref, watch, onUnmounted, type Ref } from 'vue';
+import { ref, computed, onUnmounted, type Ref } from 'vue';
 import { createGlobalState } from '@vueuse/core';
 import { useIdleCallback } from '@/utils/useIdleCallback';
 
@@ -77,13 +77,13 @@ export function useIdleStorage<T>(
    */
   if (!globalStateFactories.has(key)) {
     const stateFactory = createGlobalState(() => {
-      // 创建响应式变量（初始值从 localStorage 读取）
-      const state = ref<T>(readFromStorage());
+      /** 内部状态存储 */
+      const internalState = ref<T>(readFromStorage());
 
-      // 待写入的值
+      /** 待写入的值 */
       let pendingValue: T | null = null;
 
-      // 使用闲时回调执行写入
+      /** 使用闲时回调执行写入 */
       const { schedule, flush } = useIdleCallback(
         () => {
           if (pendingValue !== null) {
@@ -94,10 +94,11 @@ export function useIdleStorage<T>(
         { timeout, loop: false } // 按需调度，不循环
       );
 
-      // 监听值变化，闲时写入
-      watch(
-        state,
-        (newValue) => {
+      /** 使用可写 computed 替代 ref + watch，更简洁 */
+      const state = computed<T>({
+        get: () => internalState.value,
+        set: (newValue) => {
+          internalState.value = newValue;
           pendingValue = newValue;
           if (enabled) {
             schedule(); // 调度闲时写入
@@ -106,11 +107,10 @@ export function useIdleStorage<T>(
             writeToStorage(newValue);
             pendingValue = null;
           }
-        },
-        { deep: true }
-      );
+        }
+      });
 
-      // 组件卸载时立即写入（确保数据不丢失）
+      /** 组件卸载时立即写入（确保数据不丢失） */
       onUnmounted(() => {
         if (pendingValue !== null) {
           flush(); // 立即执行待写入的数据
