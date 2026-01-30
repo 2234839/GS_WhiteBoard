@@ -1,5 +1,5 @@
-import { ref, computed, onUnmounted, type Ref } from 'vue';
-import { createGlobalState } from '@vueuse/core';
+import { ref, computed, type Ref } from 'vue';
+import { createGlobalState, tryOnUnmounted } from '@vueuse/core';
 import { useIdleCallback } from '@/utils/useIdleCallback';
 
 /**
@@ -111,7 +111,7 @@ export function useIdleStorage<T>(
       });
 
       /** 组件卸载时立即写入（确保数据不丢失） */
-      onUnmounted(() => {
+      tryOnUnmounted(() => {
         if (pendingValue !== null) {
           flush(); // 立即执行待写入的数据
         }
