@@ -9,7 +9,8 @@ import type { ToolConfig } from '@/types';
 export function useCanvasGestures(
   canvasRef: Ref<HTMLDivElement | null>,
   leaferInstance: Ref<Leafer | null>,
-  toolConfig: Ref<ToolConfig> | ComputedRef<ToolConfig>
+  toolConfig: Ref<ToolConfig> | ComputedRef<ToolConfig>,
+  isUsingPen: Ref<boolean>
 ) {
   /** 触控指针的初始位置 */
   const touchStartPositions = ref<Map<number, { x: number; y: number }>>(new Map());
@@ -41,8 +42,8 @@ export function useCanvasGestures(
    * 处理触控手势开始
    */
   function handleTouchStart(e: PointerEvent) {
-    // 只在触摸绘制关闭时处理手势
-    if (e.pointerType !== 'touch' || toolConfig.value.touchDrawingEnabled) return;
+    // 优化：使用 isUsingPen 状态，避免每次都访问 toolConfig.value
+    if (e.pointerType !== 'touch' || isUsingPen.value || toolConfig.value.touchDrawingEnabled) return;
 
     const rect = canvasRef.value?.getBoundingClientRect();
     if (!rect) return;
@@ -67,8 +68,8 @@ export function useCanvasGestures(
    * 处理触控手势移动
    */
   function handleTouchMove(e: PointerEvent) {
-    // 只在触摸绘制关闭时处理手势
-    if (e.pointerType !== 'touch' || toolConfig.value.touchDrawingEnabled) return;
+    // 优化：使用 isUsingPen 状态，避免每次都访问 toolConfig.value
+    if (e.pointerType !== 'touch' || isUsingPen.value || toolConfig.value.touchDrawingEnabled) return;
     if (!leaferInstance.value || !touchStartCanvasState.value) return;
 
     const rect = canvasRef.value?.getBoundingClientRect();

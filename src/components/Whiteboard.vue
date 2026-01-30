@@ -168,7 +168,7 @@
     handleTouchMove,
     handleTouchEnd,
     touchStartCanvasState,
-  } = useCanvasGestures(canvasRef, leaferInstance, toolConfig);
+  } = useCanvasGestures(canvasRef, leaferInstance, toolConfig, isUsingPen);
 
   /**
    * 是否可以撤回
@@ -285,14 +285,8 @@
     // 如果是压感笔，自动禁用触摸输入（防止手掌误触）
     if (e.pointerType === 'pen' && !isUsingPen.value) {
       isUsingPen.value = true;
-
-      // 只在触摸绘制开启时才修改（避免不必要的响应式更新）
-      if (toolConfig.value.touchDrawingEnabled) {
-        toolConfig.value = {
-          ...toolConfig.value,
-          touchDrawingEnabled: false,
-        };
-      }
+      // 注意：不再修改 toolConfig，避免触发 localStorage 同步写入
+      // 触摸绘制通过 isUsingPen 状态在 useCanvasGestures 中逻辑禁用
 
       // 检测压感笔橡皮擦端（buttons === 32 表示橡皮擦端）
       const isPenEraser = e.buttons === 32;
@@ -579,10 +573,16 @@
   function saveCanvasData() {
     if (!props.canvasData || !mainGroup.value) return;
 
+    const startTime = performance.now();
+    const childCount = mainGroup.value.children.length;
+
     // 直接序列化整个 group
     const groupJson = mainGroup.value.toJSON() as { children?: Record<string, unknown>[] };
     props.canvasData.leaferData = groupJson.children || [];
     props.canvasData.updatedAt = Date.now();
+
+    const serializeTime = performance.now() - startTime;
+    console.log(`[性能] saveCanvasData.toJSON: ${childCount} 个元素, 耗时 ${serializeTime.toFixed(2)}ms`);
   }
 
   /**

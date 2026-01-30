@@ -16,6 +16,12 @@ export interface UseIdleCallbackOptions {
    * @default globalThis.window
    */
   window?: Window;
+
+  /**
+   * 是否自动循环调度
+   * @default true
+   */
+  loop?: boolean;
 }
 
 /**
@@ -30,14 +36,26 @@ export interface UseIdleCallbackOptions {
  *
  * @example
  * ```ts
+ * // 模式1：持续监控（默认）
  * const { pause, resume } = useIdleCallback(() => {
  *   console.log('主线程空闲，执行更新');
  *   updatePerformanceData();
  * });
+ *
+ * // 模式2：按需调度
+ * const { schedule } = useIdleCallback(() => {
+ *   console.log('执行一次');
+ * }, { loop: false });
+ *
+ * // 稍后调度执行
+ * schedule();
  * ```
  */
-export function useIdleCallback(callback: () => void, options: UseIdleCallbackOptions = {}) {
-  const { timeout = 3000, window: win = globalThis.window } = options;
+export function useIdleCallback(
+  callback: () => void,
+  options: UseIdleCallbackOptions = {}
+) {
+  const { timeout = 3000, window: win = globalThis.window, loop = true } = options;
 
   /** 是否暂停 */
   const paused = ref(false);
@@ -57,8 +75,8 @@ export function useIdleCallback(callback: () => void, options: UseIdleCallbackOp
     try {
       callback();
     } finally {
-      // 如果未暂停，继续安排下一次执行
-      if (!paused.value) {
+      // 如果未暂停且启用循环，继续安排下一次执行
+      if (!paused.value && loop) {
         schedule();
       }
     }
@@ -120,7 +138,9 @@ export function useIdleCallback(callback: () => void, options: UseIdleCallbackOp
       paused.value = false;
     }
     // 无论之前是否暂停，都开始调度
-    schedule();
+    if (loop) {
+      schedule();
+    }
   }
 
   /**
@@ -129,6 +149,11 @@ export function useIdleCallback(callback: () => void, options: UseIdleCallbackOp
   function flush() {
     pause();
     executeCallback();
+  }
+
+  // 如果启用循环，自动开始调度
+  if (loop) {
+    schedule();
   }
 
   // 组件卸载时清理
@@ -140,5 +165,6 @@ export function useIdleCallback(callback: () => void, options: UseIdleCallbackOp
     pause,
     resume,
     flush,
+    schedule,
   };
 }

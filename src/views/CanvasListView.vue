@@ -40,12 +40,15 @@ async function generatePreview(canvas: CanvasData): Promise<string | null> {
       leafer.add(group);
 
       // 直接导出 group，使用 trim 自动裁剪透明像素
+      const startTime = performance.now();
       const result = await group.export('png', {
         blob: true,
         scale: 0.5, // 缩放比例，生成更清晰的缩略图
         trim: true, // 自动裁剪透明像素
         fill: 'white', // 背景填充白色
       });
+      const exportTime = performance.now() - startTime;
+      console.log(`[性能] group.export (PNG): ${group.children.length} 个元素, 耗时 ${exportTime.toFixed(2)}ms`);
 
       // 创建 object URL
       const blob = result.data as Blob;
