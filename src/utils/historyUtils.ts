@@ -1,10 +1,4 @@
 import type { Group } from 'leafer-ui';
-import { useLogControl } from '@/composables/useLogControl';
-
-/**
- * 日志控制
- */
-const logEnable = useLogControl();
 
 /**
  * 历史记录项（使用完整状态快照）
@@ -25,11 +19,7 @@ export function pushState(
 ) {
   if (!group) return;
 
-  const startTime = performance.now();
   const currentState = group.toJSON();
-  const serializeTime = performance.now() - startTime;
-
-  logEnable.undoRedo && console.log(`[撤销重做] pushState: 序列化耗时 ${serializeTime.toFixed(2)}ms`);
 
   // 将当前状态压入 undoStack（保存整个 group 的 JSON）
   undoStack.push({ snapshot: (currentState as { children?: Record<string, unknown>[] }).children || [] });
