@@ -1,6 +1,6 @@
 <script setup lang="ts">
   import { ref, computed } from 'vue';
-  import { useStorage } from '@vueuse/core';
+  import { useIdleStorage } from '@/composables/useIdleStorage';
 
   /**
    * 使用 defineModel 定义双向绑定的颜色值
@@ -36,7 +36,9 @@
   ];
 
   /** 历史颜色（最多保存 12 个） */
-  const colorHistory = useStorage<string[]>('whiteboard-color-history', [], localStorage);
+  const colorHistory = useIdleStorage<string[]>('whiteboard-color-history', {
+    defaultValue: []
+  });
 
   /** 色板输入的引用 */
   const colorInputRef = ref<HTMLInputElement | null>(null);

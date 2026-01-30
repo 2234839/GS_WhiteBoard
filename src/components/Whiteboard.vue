@@ -1,6 +1,7 @@
 <script setup lang="ts">
   import { ref, shallowRef, onMounted, onUnmounted, computed, watch } from 'vue';
   import { useStorage } from '@vueuse/core';
+  import { useIdleStorage } from '@/composables/useIdleStorage';
   import { Leafer, Pen, Group } from 'leafer-ui';
   import type { ToolConfig, ToolType } from '@/types';
   import type { CanvasData } from '@/composables/useCanvasData';
@@ -91,12 +92,16 @@
   /**
    * 性能分析开关（持久化）
    */
-  const performanceMonitorEnabled = useStorage('whiteboard-performance-monitor', false, localStorage);
+  const performanceMonitorEnabled = useIdleStorage('whiteboard-performance-monitor', {
+    defaultValue: false
+  });
 
   /**
    * 撤销重做功能开关（持久化，用于性能测试对比）
    */
-  const undoRedoEnabled = useStorage('whiteboard-undo-redo-enabled', true, localStorage);
+  const undoRedoEnabled = useIdleStorage('whiteboard-undo-redo-enabled', {
+    defaultValue: true
+  });
 
   /** Leafer实例（使用 shallowRef 避免深度响应式影响性能） */
   const leaferInstance = shallowRef<Leafer | null>(null);

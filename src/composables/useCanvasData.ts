@@ -1,4 +1,4 @@
-import { useStorage } from '@vueuse/core';
+import { useIdleStorage } from '@/composables/useIdleStorage';
 import { computed } from 'vue';
 import type { ToolConfig, ToolType } from '@/types';
 
@@ -55,12 +55,16 @@ export function useCanvasData() {
   /**
    * 所有画布数据列表
    */
-  const canvases = useStorage<CanvasData[]>('whiteboard-canvases', []);
+  const canvases = useIdleStorage<CanvasData[]>('whiteboard-canvases', {
+    defaultValue: []
+  });
 
   /**
    * 当前选中的画布ID
    */
-  const currentCanvasId = useStorage<string | null>('whiteboard-current-canvas', null);
+  const currentCanvasId = useIdleStorage<string | null>('whiteboard-current-canvas', {
+    defaultValue: null
+  });
 
   /**
    * 当前画布数据

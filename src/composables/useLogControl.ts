@@ -1,4 +1,5 @@
-import { useStorage, toReactive } from '@vueuse/core';
+import { toReactive } from '@vueuse/core';
+import { useIdleStorage } from '@/composables/useIdleStorage';
 
 /**
  * 日志类别元数据
@@ -82,11 +83,9 @@ function getDefaultLogConfig(): LogEnableConfig {
  */
 export function useLogControl() {
   /** 从 localStorage 读取日志配置，使用配置对象生成的默认值 */
-  const config = useStorage<LogEnableConfig>(
+  const config = useIdleStorage<LogEnableConfig>(
     'whiteboard-log-config',
-    getDefaultLogConfig(),
-    localStorage,
-    { mergeDefaults: true }
+    { defaultValue: getDefaultLogConfig() }
   );
 
   /** 使用 toReactive 将 Ref 转换为响应式对象，同时保持响应性 */
